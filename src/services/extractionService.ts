@@ -718,7 +718,7 @@ export async function searchGoogleLeads(
 
   // 2. Call Server-Side Gemini AI Deep Search Endpoint
   try {
-    const aiResponse = await fetch('/api/ai/deep-search', {
+    const aiResponse = await fetch('/api/deep-search', { 
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
@@ -977,3 +977,4 @@ export async function extractFromDirectUrl(
     confidence: 97,
   };
 }
+Conectando ao novo cérebro Google Places
