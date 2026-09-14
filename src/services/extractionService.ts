@@ -978,4 +978,3 @@ export async function extractFromDirectUrl(
     confidence: 97,
   };
 }
-Conectando ao novo cérebro Google Places
