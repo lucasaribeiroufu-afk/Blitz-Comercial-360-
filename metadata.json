@@ -1,0 +1,6 @@
+{
+  "name": "Blitz 360",
+  "description": "Ferramenta moderna de prospecção e extração de contatos para equipes de vendas com login Google e Firestore.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
