@@ -1,5 +1,25 @@
+// Função para gerar Instagram limpo (sem espaços nem caracteres especiais)
+function gerarInstagram(nome) {
+  if (!nome) return null;
+  const clean = nome
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .replace(/[^a-z0-9]/g, '')        // remove TUDO que não é letra/número
+    .slice(0, 20);                    // limita a 20 caracteres
+  return clean ? `@${clean}` : null;
+}
+
+// Função para limpar o nome do estabelecimento (remover prefixos comuns)
+function limparNome(nome) {
+  if (!nome) return 'Empresa';
+  return nome
+    .replace(/^(Auto\s+)?Posto\s+/i, '')
+    .replace(/\s*-\s*(GRUPO|Grupo|REDE|Rede)\s+.*$/i, '')
+    .trim();
+}
+
 export default async function handler(req, res) {
-  // CORS - permite que o seu app acesse essa API
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
@@ -17,20 +37,18 @@ export default async function handler(req, res) {
   const { query, location, count = 10 } = req.body;
 
   if (!query) {
-    return res.status(400).json({ error: 'Forneça um termo de busca (ex: "postos de combustível").' });
+    return res.status(400).json({ error: 'Forneça um termo de busca.' });
   }
 
   const apiKey = process.env.GOOGLE_MAPS_API_KEY;
 
   if (!apiKey) {
-    return res.status(500).json({ error: 'Chave da API do Google Maps não configurada no servidor.' });
+    return res.status(500).json({ error: 'Chave da API do Google Maps não configurada.' });
   }
 
   try {
-    // Montar a busca textual para o Google Places
     const searchQuery = location ? `${query} em ${location}` : query;
 
-    // Chamar a API do Google Places (New)
     const response = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {
@@ -47,32 +65,43 @@ export default async function handler(req, res) {
 
     if (!response.ok) {
       const errorData = await response.json();
-      console.error('Erro do Google Places:', errorData);
       throw new Error(errorData.error?.message || 'Erro ao consultar Google Places');
     }
 
     const data = await response.json();
     const places = data.places || [];
 
-    // Mapear para o formato que o seu App espera
-    const leads = places.map((place) => ({
-      name: place.displayName?.text || 'Empresa sem nome',
-      phone: place.nationalPhoneNumber || place.internationalPhoneNumber || 'Telefone não disponível',
-      location: place.formattedAddress || 'Endereço não disponível',
-      profileUrl: `https://www.google.com/maps/place/?q=place_id:${place.id}`,
-      platform: 'google_maps',
-      category: place.primaryTypeDisplayName?.text || query,
-      rating: place.rating || 0,
-      reviewsCount: place.userRatingCount || 0,
-      email: null,
-      instagram: null,
-      department: 'Setor de Compras / Gerência',
-      decisionMaker: 'Proprietário / Gerente',
-      trendingInsights: [`Encontrado via Google Maps para: "${query}"${location ? ' em ' + location : ''}`],
-      confidence: 100,
-      cnpj: null,
-      website: place.websiteUri || null
-    }));
+    // Mapear cada lugar para o formato do card
+    const leads = places.map((place) => {
+      const nomeOriginal = place.displayName?.text || 'Empresa sem nome';
+      const nomeLimpo = limparNome(nomeOriginal);
+      const instagram = gerarInstagram(nomeLimpo);
+
+      // Extrair telefone com formatação bonita
+      const telefone = place.nationalPhoneNumber || place.internationalPhoneNumber || 'Não disponível';
+
+      return {
+        name: nomeOriginal,
+        company: nomeLimpo,
+        phone: telefone,
+        establishmentPhone: telefone,
+        location: place.formattedAddress || 'Endereço não disponível',
+        profileUrl: `https://www.google.com/maps/place/?q=place_id:${place.id}`,
+        platform: 'google_maps',
+        category: place.primaryTypeDisplayName?.text || query,
+        rating: place.rating || 0,
+        reviewsCount: place.userRatingCount || 0,
+        instagram: instagram,
+        email: null,
+        website: place.websiteUri || null,
+        department: 'Setor de Compras / Gerência',
+        decisionMaker: 'Proprietário / Gerente',
+        trendingInsights: [`📍 Encontrado no Google Maps: "${query}"${location ? ' em ' + location : ''}`],
+        confidence: 100,
+        cnpj: null,
+        socios: []
+      };
+    });
 
     res.status(200).json({
       leads: leads,
