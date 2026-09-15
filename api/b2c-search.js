@@ -1,6 +1,6 @@
 // ============================================================
-// CÉREBRO B2C v5: Radar de Intenção de Compra (Focado em COMPRADORES)
-// Fontes: Serper.dev (Google Search) + Gemini + Google Search
+// CÉREBRO B2C v6: Radar de Intenção de Compra (COMPRADORES)
+// Com FALLBACK NACIONAL automático quando cidade tem poucos resultados
 // ============================================================
 
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
@@ -8,7 +8,6 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const UPSTASH_URL = process.env.UPSTASH_REDIS_URL;
 const UPSTASH_TOKEN = process.env.REDIS_SENHA;
 
-// Limites diários por fonte
 const LIMITES = {
   serper: 200,
   gemini: 500,
@@ -75,7 +74,7 @@ async function buscarSerper(query, location) {
   try {
     // 🎯 Query com operadores focados em COMPRADORES + exclusões de VENDEDORES
     const baseQuery = `"quero comprar" OR "onde compro" OR "procuro" OR "estou procurando" OR "indicação de" "${query}"`;
-    const excludeTerms = `-venda -vendendo -loja -preço -catálogo -fabricante -revendedor -distribuidor -site:mercadolivre.com.br/MLB -site:olx.com.br/anuncio`;
+    const excludeTerms = `-venda -vendendo -loja -preço -catálogo -fabricante -revendedor -distribuidor`;
     const q = location 
       ? `${baseQuery} ${location} ${excludeTerms}`
       : `${baseQuery} ${excludeTerms}`;
@@ -109,7 +108,7 @@ async function buscarSerper(query, location) {
 
     // Filtrar resultados que claramente são de vendedores
     const sellerKeywords = [
-      'comprar agora', 'adicionar ao carrinho', 'frete grátis', 'à vista',
+      'comprar agora', 'adicionar ao carrinho', 'frete grátis',
       'parcelamos', 'entrega em todo', 'compre online', 'loja virtual',
       'preço à vista', 'melhor preço', 'orçamento', 'tabela de preços',
       'catálogo completo', 'fabricamos', 'revenda autorizada'
@@ -121,7 +120,7 @@ async function buscarSerper(query, location) {
       return !isSeller;
     });
 
-    console.log(`🎯 Serper: ${filtered.length} resultados após filtro de vendedores`);
+    console.log(`🎯 Serper: ${filtered.length} após filtro anti-vendedor`);
 
     return filtered.map(item => ({
       name: item.title || 'Menção',
@@ -152,24 +151,22 @@ async function buscarGemini(query, location) {
   }
 
   try {
-    // 🎯 Prompt EXPLÍCITO para filtrar apenas COMPRADORES
-    const prompt = `Você é um rastreador de intenção de compra. Busque na web menções públicas de PESSOAS FÍSICAS ou EMPRESAS que estão PROCURANDO COMPRAR "${query}"${location ? ` em ${location}` : ''}.
+    const prompt = `Você é um rastreador de intenção de compra. Busque na web menções públicas de PESSOAS FÍSICAS ou EMPRESAS que estão PROCURANDO COMPRAR "${query}"${location ? ` em ${location}` : ' no Brasil'}.
 
 ⚠️ REGRAS CRÍTICAS:
 - Retorne APENAS menções de COMPRADORES (pessoas perguntando onde comprar, procurando indicação, querendo adquirir).
 - NÃO retorne anúncios de VENDEDORES, lojas, fabricantes, catálogos, sites de e-commerce ou revendedores.
 - NÃO retorne páginas de produtos à venda.
-- NÃO retorne "Mercado Livre", "OLX", "Amazon" como resultado — a menos que seja um post de um usuário perguntando onde comprar.
 - Priorize: fóruns, grupos do Facebook, Reddit, Twitter/X, comentários no Instagram, perguntas no Google.
 
 FORMATO (retorne APENAS o array JSON, sem markdown):
-[{"name": "nome do autor ou 'Usuário'", "source": "site de origem", "sourceUrl": "URL completa da publicação", "intent": "trecho exato onde a pessoa demonstra intenção de compra", "location": "cidade/estado ou vazio", "date": "AAAA-MM-DD", "contact": null, "score": 85}]
+[{"name": "nome do autor ou 'Usuário'", "source": "site de origem", "sourceUrl": "URL completa", "intent": "trecho exato onde a pessoa demonstra intenção de compra", "location": "cidade/estado ou vazio", "date": "AAAA-MM-DD", "contact": null, "score": 85}]
 
 Se não encontrar NENHUMA menção de comprador, retorne: []`;
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 
-    console.log(`🔍 Gemini query (focado em COMPRADORES): "${query}"`);
+    console.log(`🔍 Gemini query: "${query}"${location ? ` em ${location}` : ' (Brasil)'}`);
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -216,7 +213,6 @@ Se não encontrar NENHUMA menção de comprador, retorne: []`;
 
     if (!Array.isArray(resultados)) return [];
 
-    // Filtro anti-vendedor (reforço)
     const sellerKeywords = [
       'comprar agora', 'carrinho', 'frete grátis', 'parcelamos',
       'compre online', 'loja virtual', 'melhor preço', 'orçamento',
@@ -240,7 +236,7 @@ Se não encontrar NENHUMA menção de comprador, retorne: []`;
         score: r.score || 70,
       }));
 
-    console.log(`✅ Gemini: ${leads.length} menções de COMPRADORES válidas`);
+    console.log(`✅ Gemini: ${leads.length} menções válidas`);
     return leads;
   } catch (err) {
     console.error('Erro Gemini:', err);
@@ -262,34 +258,43 @@ export default async function handler(req, res) {
   if (!query) return res.status(400).json({ error: 'Forneça o que deseja rastrear.' });
 
   try {
-    console.log(`\n🔍 ============ B2C Busca (COMPRADORES): "${query}"${location ? ` em ${location}` : ''} ============`);
+    console.log(`\n🔍 ============ B2C: "${query}"${location ? ` em ${location}` : ' (Brasil)'} ============`);
 
-    // 1ª tentativa: busca COM localização (se fornecida)
+    // 🎯 1ª tentativa: busca COM localização (se fornecida)
     let [serper, gemini] = await Promise.all([
       buscarSerper(query, location),
       buscarGemini(query, location),
     ]);
 
-    // 🔄 FALLBACK NACIONAL: se retornar menos de 3 resultados e houver localização, expande para o Brasil
-    if (location && (serper.length + gemini.length) < 3) {
-      console.log(`⚠️ Poucos resultados em "${location}" (${serper.length + gemini.length}). Expandindo para busca NACIONAL...`);
+    const totalLocal = serper.length + gemini.length;
+    console.log(`📊 Local: serper=${serper.length}, gemini=${gemini.length}, total=${totalLocal}`);
+
+    // 🌎 FALLBACK NACIONAL: se retornar < 5 resultados e houver localização, expande para o Brasil
+    if (location && totalLocal < 5) {
+      console.log(`⚠️ Poucos resultados em "${location}". Expandindo para busca NACIONAL...`);
       
       const [serperNacional, geminiNacional] = await Promise.all([
         buscarSerper(query, ''),
         buscarGemini(query, ''),
       ]);
 
-      // Marcar os resultados nacionais para o usuário saber
-      serperNacional.forEach(r => { r.location = r.location || 'Brasil (busca nacional)'; });
-      geminiNacional.forEach(r => { r.location = r.location || 'Brasil (busca nacional)'; });
+      // Marcar resultados nacionais com indicador
+      serperNacional.forEach(r => { 
+        r.location = r.location || `${location} (ou Brasil)`; 
+        r.name = `🌎 ${r.name}`;
+      });
+      geminiNacional.forEach(r => { 
+        r.location = r.location || `${location} (ou Brasil)`; 
+        r.name = `🌎 ${r.name}`;
+      });
 
       serper = [...serper, ...serperNacional];
       gemini = [...gemini, ...geminiNacional];
       
-      console.log(`🌎 Nacional: serper=${serperNacional.length}, gemini=${geminiNacional.length}`);
+      console.log(`🌎 Nacional adicionado: serper=${serperNacional.length}, gemini=${geminiNacional.length}`);
     }
 
-    console.log(`📊 Resultado das fontes: serper=${serper.length}, gemini=${gemini.length}`);
+    console.log(`📊 Total final: serper=${serper.length}, gemini=${gemini.length}`);
 
     const todos = [...gemini, ...serper];
     const vistos = new Set();
@@ -304,7 +309,7 @@ export default async function handler(req, res) {
 
     const fontes = { serper: serper.length, gemini: gemini.length };
 
-    console.log(`✅ B2C finalizado: ${resultados.length} menções de compradores\n`);
+    console.log(`✅ B2C finalizado: ${resultados.length} menções\n`);
 
     res.status(200).json({
       leads: resultados,
