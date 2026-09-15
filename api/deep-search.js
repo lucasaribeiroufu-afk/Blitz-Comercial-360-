@@ -55,7 +55,10 @@ function similaridade(nome1, nome2) {
 // Buscar empresas na Casa dos Dados (v5 - retorna QSA completo)
 // ------------------------------------------------------------
 async function buscarEmpresasCasaDados(cnae, municipio, uf) {
-  if (!CASA_DOS_DADOS_API_KEY) return [];
+  if (!CASA_DOS_DADOS_API_KEY) {
+    console.error('CASA_DOS_DADOS_API_KEY não configurada');
+    return [];
+  }
 
   try {
     const body = {
@@ -69,6 +72,8 @@ async function buscarEmpresasCasaDados(cnae, municipio, uf) {
     if (uf) body.uf = [uf.toLowerCase()];
     if (municipio) body.municipio = [municipio.toLowerCase()];
 
+    console.log('Casa dos Dados - Buscando:', JSON.stringify(body));
+
     const response = await fetch('https://api.casadosdados.com.br/v5/cnpj/pesquisa', {
       method: 'POST',
       headers: {
@@ -79,12 +84,14 @@ async function buscarEmpresasCasaDados(cnae, municipio, uf) {
     });
 
     if (!response.ok) {
-      console.error('Casa dos Dados erro:', response.status, await response.text());
+      const errText = await response.text();
+      console.error('Casa dos Dados erro HTTP:', response.status, errText);
       return [];
     }
 
     const data = await response.json();
-    return data.cnpjs || [];
+    console.log('Casa dos Dados - Total retornado:', data?.total, '| Empresas:', data?.cnpjs?.length);
+    return data?.cnpjs || [];
   } catch (err) {
     console.error('Erro Casa dos Dados:', err);
     return [];
@@ -96,12 +103,14 @@ async function buscarEmpresasCasaDados(cnae, municipio, uf) {
 // ------------------------------------------------------------
 async function buscarTelefoneBrasilAPI(cnpj) {
   try {
-    const digits = cnpj.replace(/\D/g, '');
+    const digits = String(cnpj).replace(/\D/g, '');
+    if (digits.length !== 14) return null;
+
     const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
     if (!response.ok) return null;
     const data = await response.json();
     if (data.ddd_telefone_1) {
-      const tel = data.ddd_telefone_1 + (data.telefone_1 || '');
+      const tel = String(data.ddd_telefone_1) + String(data.telefone_1 || '');
       return `(${tel.slice(0, 2)}) ${tel.slice(2)}`;
     }
     return null;
@@ -164,6 +173,8 @@ export default async function handler(req, res) {
       if (m) { municipio = m[1].trim(); uf = m[2].trim(); }
     }
 
+    console.log('Município/UF extraídos:', municipio, uf);
+
     // === 3) Determinar CNAE ===
     const termoLower = query.toLowerCase();
     let cnae = null;
@@ -171,9 +182,15 @@ export default async function handler(req, res) {
       if (termoLower.includes(key)) { cnae = val; break; }
     }
 
-    // === 4) Buscar empresas na Casa dos Dados (1 chamada) ===
-    const empresas = await buscarEmpresasCasaDados(cnae, municipio, uf);
-    console.log(`Casa dos Dados retornou ${empresas.length} empresas em ${municipio}/${uf}`);
+    console.log('CNAE identificado:', cnae);
+
+    // === 4) Buscar empresas na Casa dos Dados ===
+    let empresas = [];
+    if (cnae && municipio && uf) {
+      empresas = await buscarEmpresasCasaDados(cnae, municipio, uf);
+    } else {
+      console.warn('Faltam dados para consulta Casa dos Dados:', { cnae, municipio, uf });
+    }
 
     // === 5) Combinar cada resultado do Google com a melhor empresa ===
     const leads = await Promise.all(places.map(async (place) => {
