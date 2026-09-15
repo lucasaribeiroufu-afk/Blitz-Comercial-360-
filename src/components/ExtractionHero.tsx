@@ -1653,6 +1653,6 @@ export function ExtractionHero({
         )}
 
       </div>
-    </section>
-  }
+      </section>
+  );
 }
