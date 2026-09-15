@@ -1,23 +1,17 @@
 // ============================================================
-// CÉREBRO B2C: Radar de Intenção de Compra
-// Fontes: Google Custom Search + Mercado Livre + Gemini + Apify (OLX/ML)
+// CÉREBRO B2C v2: Radar de Intenção de Compra
+// Fontes: Google Custom Search + Gemini + Google Search Grounding
 // ============================================================
 
 const GOOGLE_CSE_API_KEY = process.env.GOOGLE_CSE_API_KEY;
 const GOOGLE_CSE_CX = process.env.GOOGLE_CSE_CX;
-const MERCADO_LIVRE_TOKEN = process.env.MERCADO_LIVRE_TOKEN;
-const MERCADO_LIVRE_SELLER_ID = process.env.MERCADO_LIVRE_SELLER_ID;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const UPSTASH_URL = process.env.UPSTASH_REDIS_URL;
 const UPSTASH_TOKEN = process.env.REDIS_SENHA;
 
-// 🎯 Controle de limites diários
 const LIMITES = {
-  google_cse: 100,
-  gemini: 5000,
-  apify_olx: 50,
-  apify_ml: 50,
+  google_cse: 90,
+  gemini: 500,
 };
 
 function normalizar(s) {
@@ -26,11 +20,11 @@ function normalizar(s) {
     .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// --- Controle de créditos (Upstash) ---
+// --- Controle de limites (Upstash) ---
 async function verificarLimite(fonte) {
   const hoje = new Date().toISOString().split('T')[0];
   const chave = `b2c:${fonte}:${hoje}`;
-  const limite = LIMITES[fonte] || 100;
+  const limite = LIMITES[fonte] || 50;
 
   if (!UPSTASH_URL || !UPSTASH_TOKEN) {
     return { permitido: true, usado: 0, restante: limite, limite };
@@ -46,7 +40,6 @@ async function verificarLimite(fonte) {
     if (usado >= limite) {
       return { permitido: false, usado, restante: 0, limite };
     }
-
     return { permitido: true, usado, restante: limite - usado, limite };
   } catch {
     return { permitido: true, usado: 0, restante: limite, limite };
@@ -72,110 +65,129 @@ async function incrementarLimite(fonte) {
 // --- 1. Google Custom Search ---
 async function buscarGoogleCSE(query, location) {
   const status = await verificarLimite('google_cse');
-  if (!status.permitido || !GOOGLE_CSE_API_KEY || !GOOGLE_CSE_CX) return [];
+  if (!status.permitido) {
+    console.log('🚫 Google CSE: limite diário atingido');
+    return [];
+  }
+  if (!GOOGLE_CSE_API_KEY || !GOOGLE_CSE_CX) {
+    console.warn('⚠️ Google CSE: chaves não configuradas');
+    return [];
+  }
 
   try {
-    const termos = `"quero comprar" OR "onde compro" OR "procuro" "${query}"${location ? ` "${location}"` : ''}`;
-    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_CSE_API_KEY}&cx=${GOOGLE_CSE_CX}&q=${encodeURIComponent(termos)}&num=10&lr=lang_pt`;
-    
+    // Query simplificada (Custom Search tem limites de complexidade)
+    const termos = `${query} comprar${location ? ' ' + location : ''}`;
+    const url = `https://www.googleapis.com/customsearch/v1?key=${GOOGLE_CSE_API_KEY}&cx=${GOOGLE_CSE_CX}&q=${encodeURIComponent(termos)}&num=10&lr=lang_pt&gl=br`;
+
+    console.log(`🔍 Google CSE: "${termos}"`);
     const response = await fetch(url);
-    if (!response.ok) return [];
+
+    if (!response.ok) {
+      const errData = await response.text();
+      console.error('Google CSE erro:', response.status, errData);
+      return [];
+    }
+
     const data = await response.json();
     await incrementarLimite('google_cse');
 
-    return (data.items || []).map(item => ({
+    const resultados = (data.items || []).map(item => ({
       name: item.title || 'Menção',
       source: 'Google Search',
-      sourceUrl: item.link,
+      sourceUrl: item.link || '',
       intent: item.snippet || '',
       location: location || '',
       date: new Date().toISOString().split('T')[0],
       contact: null,
-      score: 70,
+      score: 75,
     }));
+
+    console.log(`✅ Google CSE: ${resultados.length} resultados`);
+    return resultados;
   } catch (err) {
     console.error('Erro Google CSE:', err);
     return [];
   }
 }
 
-// --- 2. Mercado Livre API (Leads de compradores) ---
-async function buscarMercadoLivreLeads(query, location) {
-  const status = await verificarLimite('mercado_livre');
-  if (!status.permitido || !MERCADO_LIVRE_TOKEN || !MERCADO_LIVRE_SELLER_ID) return [];
-
-  try {
-    const url = `https://api.mercadolibre.com/vis/users/${MERCADO_LIVRE_SELLER_ID}/leads/buyers?limit=50&date_from=${new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0]}`;
-    
-    const response = await fetch(url, {
-      headers: { Authorization: `Bearer ${MERCADO_LIVRE_TOKEN}` }
-    });
-    if (!response.ok) return [];
-    const data = await response.json();
-    await incrementarLimite('mercado_livre');
-
-    return (data.results || [])
-      .filter(lead => normalizar(lead.item_id || '').includes(normalizar(query)) || 
-                      normalizar(lead.name || '').includes(normalizar(query)))
-      .map(lead => ({
-        name: lead.name || 'Comprador interessado',
-        source: 'Mercado Livre (Lead)',
-        sourceUrl: `https://www.mercadolivre.com.br/item/${lead.item_id}`,
-        intent: `Interesse em ${lead.item_id}`,
-        location: location || '',
-        date: lead.date || new Date().toISOString().split('T')[0],
-        contact: lead.email || lead.phone || null,
-        score: 90,
-      }));
-  } catch (err) {
-    console.error('Erro Mercado Livre:', err);
-    return [];
-  }
-}
-
-// --- 3. Gemini + Google Search Grounding ---
+// --- 2. Gemini + Google Search Grounding ---
 async function buscarGemini(query, location) {
   const status = await verificarLimite('gemini');
-  if (!status.permitido || !GEMINI_API_KEY) return [];
+  if (!status.permitido) {
+    console.log('🚫 Gemini: limite diário atingido');
+    return [];
+  }
+  if (!GEMINI_API_KEY) {
+    console.warn('⚠️ Gemini: chave não configurada');
+    return [];
+  }
 
   try {
-    const prompt = `Você é um assistente de prospecção B2B/B2C. Busque na web menções públicas de pessoas ou empresas que estão PROCURANDO COMPRAR "${query}"${location ? ` em ${location}` : ''}. 
-    
-    Retorne um JSON com array de até 10 resultados, cada um com os campos:
-    - name: nome da pessoa/empresa (se disponível)
-    - source: site onde encontrou (OLX, Mercado Livre, Facebook, etc)
-    - sourceUrl: URL da menção
-    - intent: trecho da menção
-    - location: cidade/estado (se disponível)
-    - date: data aproximada
-    - contact: telefone/email (se público)
-    - score: 0-100 (quanto maior, mais forte a intenção)
-    
-    Foque em menções RECENTES e de ALTA INTENÇÃO (perguntando preço, querendo comprar, etc).
-    Retorne APENAS o JSON, sem texto adicional.`;
+    const prompt = `Busque na web menções públicas de pessoas ou empresas que estão PROCURANDO COMPRAR "${query}"${location ? ` em ${location}` : ''}.
+
+Retorne APENAS um JSON válido (sem texto adicional, sem markdown), com array de até 10 resultados. Cada objeto deve ter:
+{
+  "name": "nome da pessoa ou empresa (ou 'Anúncio público')",
+  "source": "site onde encontrou (OLX, Mercado Livre, Facebook, Instagram, etc)",
+  "sourceUrl": "URL completa da menção",
+  "intent": "trecho curto da menção (ex: 'quero comprar uma balança')",
+  "location": "cidade/estado ou vazio",
+  "date": "data aproximada AAAA-MM-DD ou vazio",
+  "contact": "telefone ou email público ou null",
+  "score": número de 0 a 100
+}
+
+Foque em menções RECENTES (últimos 30 dias) e de ALTA INTENÇÃO (perguntando preço, querendo comprar).
+
+Se não encontrar nada, retorne: []`;
 
     const url = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`;
-    
+
+    console.log(`🔍 Gemini: buscando "${query}"`);
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         contents: [{ parts: [{ text: prompt }] }],
-        tools: [{ googleSearch: {} }],
-        generationConfig: { temperature: 0.2, maxOutputTokens: 2048 }
+        tools: [{ google_search: {} }],  // ✅ CORRIGIDO: era googleSearch, agora google_search
+        generationConfig: {
+          temperature: 0.2,
+          maxOutputTokens: 4096,
+          responseMimeType: 'application/json'
+        }
       })
     });
 
-    if (!response.ok) return [];
+    if (!response.ok) {
+      const errData = await response.text();
+      console.error('Gemini erro:', response.status, errData);
+      return [];
+    }
+
     const data = await response.json();
     await incrementarLimite('gemini');
 
     const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
-    const jsonMatch = text.match(/\[[\s\S]*\]/);
-    if (!jsonMatch) return [];
+    if (!text) return [];
 
-    const resultados = JSON.parse(jsonMatch[0]);
-    return resultados.map(r => ({
+    // Tenta extrair JSON do texto
+    let jsonText = text.trim();
+    // Remove markdown se houver
+    jsonText = jsonText.replace(/^```json\s*/i, '').replace(/\s*```$/i, '');
+
+    let resultados = [];
+    try {
+      const parsed = JSON.parse(jsonText);
+      resultados = Array.isArray(parsed) ? parsed : (parsed.leads || []);
+    } catch {
+      // Tenta encontrar array no texto
+      const match = jsonText.match(/\[[\s\S]*\]/);
+      if (match) {
+        try { resultados = JSON.parse(match[0]); } catch { return []; }
+      }
+    }
+
+    const leads = resultados.map(r => ({
       name: r.name || 'Menção encontrada',
       source: r.source || 'Google (via Gemini)',
       sourceUrl: r.sourceUrl || '',
@@ -185,92 +197,11 @@ async function buscarGemini(query, location) {
       contact: r.contact || null,
       score: r.score || 60,
     }));
+
+    console.log(`✅ Gemini: ${leads.length} resultados`);
+    return leads;
   } catch (err) {
     console.error('Erro Gemini:', err);
-    return [];
-  }
-}
-
-// --- 4. Apify OLX Brazil Scraper ---
-async function buscarOLXApify(query, location) {
-  const status = await verificarLimite('apify_olx');
-  if (!status.permitido || !APIFY_API_TOKEN) return [];
-
-  try {
-    const input = {
-      query: query,
-      searchType: 'search',
-      region: location ? 'brasil' : 'brasil',
-      maxResults: 20,
-      maxPages: 2,
-      enrichDetails: false
-    };
-
-    const url = `https://api.apify.com/v2/actors/lentic_clockss~olx-br-scraper/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input)
-    });
-
-    if (!response.ok) return [];
-    const data = await response.json();
-    await incrementarLimite('apify_olx');
-
-    return (Array.isArray(data) ? data : []).map(item => ({
-      name: item.sellerName || 'Anunciante OLX',
-      source: 'OLX (Apify)',
-      sourceUrl: item.url || '',
-      intent: item.title || '',
-      location: item.city ? `${item.city}, ${item.uf || ''}` : (location || ''),
-      date: new Date().toISOString().split('T')[0],
-      contact: null,
-      score: 65,
-    }));
-  } catch (err) {
-    console.error('Erro Apify OLX:', err);
-    return [];
-  }
-}
-
-// --- 5. Apify Mercado Livre Scraper ---
-async function buscarMercadoLivreApify(query, location) {
-  const status = await verificarLimite('apify_ml');
-  if (!status.permitido || !APIFY_API_TOKEN) return [];
-
-  try {
-    const input = {
-      mode: 'search',
-      country: 'BR',
-      query: query,
-      maxItems: 20,
-      includeQuestions: true,
-      includeReviews: false
-    };
-
-    const url = `https://api.apify.com/v2/actors/parsebird~mercadolibre-scraper-portugues/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`;
-    const response = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(input)
-    });
-
-    if (!response.ok) return [];
-    const data = await response.json();
-    await incrementarLimite('apify_ml');
-
-    return (Array.isArray(data) ? data : []).map(item => ({
-      name: item.sellerName || 'Vendedor ML',
-      source: 'Mercado Livre (Apify)',
-      sourceUrl: item.url || '',
-      intent: item.title || '',
-      location: location || '',
-      date: new Date().toISOString().split('T')[0],
-      contact: null,
-      score: 60,
-    }));
-  } catch (err) {
-    console.error('Erro Apify ML:', err);
     return [];
   }
 }
@@ -285,23 +216,20 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
 
-  const { query, location, count = 10 } = req.body;
+  const { query, location, count = 15 } = req.body;
   if (!query) return res.status(400).json({ error: 'Forneça o que deseja rastrear.' });
 
   try {
     console.log(`🔍 B2C Busca: "${query}"${location ? ` em ${location}` : ''}`);
 
-    // Executar todas as fontes em paralelo
-    const [google, ml, gemini, olx, mlApify] = await Promise.all([
+    // Executar fontes em paralelo
+    const [google, gemini] = await Promise.all([
       buscarGoogleCSE(query, location),
-      buscarMercadoLivreLeads(query, location),
       buscarGemini(query, location),
-      buscarOLXApify(query, location),
-      buscarMercadoLivreApify(query, location),
     ]);
 
     // Combinar e deduplicar por sourceUrl
-    const todos = [...ml, ...gemini, ...google, ...olx, ...mlApify];
+    const todos = [...gemini, ...google];
     const vistos = new Set();
     const unicos = todos.filter(item => {
       if (!item.sourceUrl || vistos.has(item.sourceUrl)) return false;
@@ -309,19 +237,14 @@ export default async function handler(req, res) {
       return true;
     });
 
-    // Ordenar por score (maior primeiro)
+    // Ordenar por score
     unicos.sort((a, b) => (b.score || 0) - (a.score || 0));
 
-    // Limitar ao count
     const resultados = unicos.slice(0, count);
 
-    // Estatísticas
     const fontes = {
       google: google.length,
-      mercado_livre: ml.length,
       gemini: gemini.length,
-      olx: olx.length,
-      mercado_livre_apify: mlApify.length,
     };
 
     console.log(`✅ B2C finalizado: ${resultados.length} resultados`, fontes);
@@ -330,7 +253,7 @@ export default async function handler(req, res) {
       leads: resultados,
       meta: {
         intent: 'b2c_buyer_intent',
-        summary: `${resultados.length} menções encontradas para "${query}"${location ? ` em ${location}` : ''}. Fontes: ${Object.entries(fontes).filter(([k,v]) => v > 0).map(([k,v]) => `${k}(${v})`).join(', ')}`,
+        summary: `${resultados.length} menções para "${query}"${location ? ` em ${location}` : ''}. Fontes: ${Object.entries(fontes).filter(([k,v]) => v > 0).map(([k,v]) => `${k}(${v})`).join(', ') || 'nenhuma'}`,
         targetAudience: 'Pessoas físicas com intenção de compra',
         fontes_utilizadas: fontes,
         total_antes_deduplicacao: todos.length,
