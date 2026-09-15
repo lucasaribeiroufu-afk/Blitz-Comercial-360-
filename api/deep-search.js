@@ -8,11 +8,11 @@ const DATA_STONE_API_KEY = process.env.DATA_STONE_API_KEY;
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const CASA_DOS_DADOS_API_KEY = process.env.CASA_DOS_DADOS_API_KEY;
 const UPSTASH_URL = process.env.UPSTASH_REDIS_URL;
-const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_TOKEN;
+const UPSTASH_TOKEN = process.env.REDIS_SENHA;
 
 // 🎯 Limites flexíveis
-const DATA_STONE_MAX_DAY_1 = 3;   // 1º dia útil do mês
-const DATA_STONE_MAX_OTHER = 2;   // Demais dias
+const DATA_STONE_MAX_DAY_1 = 3;
+const DATA_STONE_MAX_OTHER = 2;
 
 const CNAE_MAP = {
   'posto': '4731800', 'combustível': '4731800', 'combustivel': '4731800',
@@ -51,14 +51,14 @@ function similaridade(nome1, nome2) {
 // --- 🎯 Controle de créditos (Upstash) ---
 async function getPrimeiroDiaDoMes() {
   if (!UPSTASH_URL || !UPSTASH_TOKEN) return true;
-  const mes = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const mes = new Date().toISOString().slice(0, 7);
   const chave = `datastone:primeiro_dia:${mes}`;
   try {
     const getRes = await fetch(`${UPSTASH_URL}/get/${chave}`, {
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
     });
     const getData = await getRes.json();
-    return !getData.result; // Se não existe, é o primeiro dia
+    return !getData.result;
   } catch {
     return true;
   }
@@ -72,7 +72,6 @@ async function marcarPrimeiroDiaUsado() {
     await fetch(`${UPSTASH_URL}/set/${chave}/1`, {
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
     });
-    // Expira em 35 dias
     await fetch(`${UPSTASH_URL}/expire/${chave}/3024000`, {
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
     });
@@ -99,7 +98,6 @@ async function verificarLimiteDiario() {
     const usado = parseInt(getData.result || '0', 10);
 
     if (usado >= limite) {
-      console.log(`🚫 Limite diário atingido: ${usado}/${limite}`);
       return { permitido: false, usado, restante: 0, limite, ehPrimeiroDia };
     }
 
@@ -120,7 +118,6 @@ async function incrementarContadorDiario() {
     await fetch(`${UPSTASH_URL}/expire/${chave}/172800`, {
       headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
     });
-    // Se é o primeiro dia, marca como usado
     const ehPrimeiroDia = await getPrimeiroDiaDoMes();
     if (ehPrimeiroDia) {
       await marcarPrimeiroDiaUsado();
@@ -287,7 +284,7 @@ async function buscarGooglePlaces(query, location, count) {
   return data.places || [];
 }
 
-// --- Handler ---
+// --- Handler Principal ---
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -303,7 +300,7 @@ export default async function handler(req, res) {
 
   try {
     const statusLimite = await verificarLimiteDiario();
-    console.log(`📊 Data Stone hoje: ${statusLimite.usado}/${statusLimite.limite} (${statusLimite.ehPrimeiroDia ? '1º dia' : 'dia normal'})`);
+    console.log(`📊 Data Stone hoje: ${statusLimite.usado}/${statusLimite.limite} (${statusLimite.ehPrimeiroDia ? '1º dia do mês' : 'dia normal'})`);
 
     const places = await buscarGooglePlaces(query, location, count);
 
