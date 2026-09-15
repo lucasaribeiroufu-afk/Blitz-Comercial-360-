@@ -38,6 +38,14 @@ export interface Contact {
   notes?: string;
   createdAt: number;
   updatedAt: number;
+  // 🆕 Campos da Casa dos Dados + Apify
+  tem_whatsapp?: boolean | null;
+  telefone_receita?: string | null;
+  razao_social?: string | null;
+  nome_fantasia?: string | null;
+  socios?: Array<{ nome: string; qualificacao: string }>;
+  match_score?: number;
+  website?: string | null;
 }
 
 export interface ExtractedResult {
@@ -66,6 +74,14 @@ export interface ExtractedResult {
   rating?: number;
   reviewsCount?: number;
   confidence?: number;
+  // 🆕 Campos da Casa dos Dados + Apify
+  tem_whatsapp?: boolean | null;
+  telefone_receita?: string | null;
+  razao_social?: string | null;
+  nome_fantasia?: string | null;
+  socios?: Array<{ nome: string; qualificacao: string }>;
+  match_score?: number;
+  website?: string | null;
 }
 
 export interface SearchIntelligenceMeta {
