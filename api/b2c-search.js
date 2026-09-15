@@ -264,10 +264,30 @@ export default async function handler(req, res) {
   try {
     console.log(`\n🔍 ============ B2C Busca (COMPRADORES): "${query}"${location ? ` em ${location}` : ''} ============`);
 
-    const [serper, gemini] = await Promise.all([
+    // 1ª tentativa: busca COM localização (se fornecida)
+    let [serper, gemini] = await Promise.all([
       buscarSerper(query, location),
       buscarGemini(query, location),
     ]);
+
+    // 🔄 FALLBACK NACIONAL: se retornar menos de 3 resultados e houver localização, expande para o Brasil
+    if (location && (serper.length + gemini.length) < 3) {
+      console.log(`⚠️ Poucos resultados em "${location}" (${serper.length + gemini.length}). Expandindo para busca NACIONAL...`);
+      
+      const [serperNacional, geminiNacional] = await Promise.all([
+        buscarSerper(query, ''),
+        buscarGemini(query, ''),
+      ]);
+
+      // Marcar os resultados nacionais para o usuário saber
+      serperNacional.forEach(r => { r.location = r.location || 'Brasil (busca nacional)'; });
+      geminiNacional.forEach(r => { r.location = r.location || 'Brasil (busca nacional)'; });
+
+      serper = [...serper, ...serperNacional];
+      gemini = [...gemini, ...geminiNacional];
+      
+      console.log(`🌎 Nacional: serper=${serperNacional.length}, gemini=${geminiNacional.length}`);
+    }
 
     console.log(`📊 Resultado das fontes: serper=${serper.length}, gemini=${gemini.length}`);
 
