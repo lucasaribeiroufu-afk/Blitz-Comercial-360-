@@ -45,7 +45,7 @@ import {
   ShieldCheck
 } from 'lucide-react';
 import type { ExtractedResult, ExtractionApiConfig, Contact, SearchIntelligenceMeta, EntityType } from '../types';
-import { searchGoogleLeads, extractFromDirectUrl, isUrl } from '../services/extractionService';
+import { searchGoogleLeads, searchB2CLeads, extractFromDirectUrl, isUrl } from '../services/extractionService';
 import { addContactToFirestore, batchAddContactsToFirestore } from '../services/contactService';
 import { hasPurchaseIntent } from '../utils/purchaseIntent';
 import { InstagramLogo } from './InstagramLogo';
@@ -229,6 +229,13 @@ export function ExtractionHero({
       entity: 'pj' as EntityType
     },
     { 
+      label: '🎯 Caminhonete Usada (Consumidores Finais)', 
+      term: 'Caminhonete Usada', 
+      objective: 'radar de pessoas físicas buscando comprar caminhonete usada em Goiânia, GO',
+      loc: 'Goiânia, GO',
+      entity: 'pf' as EntityType
+    },
+    { 
       label: '🛒 Eletrodomésticos 24h (Consumidores Finais)', 
       term: 'Eletrodomésticos e Utilidades', 
       objective: 'compradores de micro-ondas, aspirador de pó e fogão elétrico nas últimas 24h em São Paulo, SP',
@@ -295,20 +302,29 @@ export function ExtractionHero({
       await new Promise((r) => setTimeout(r, 150));
 
       const freshSeed = Date.now();
-      setLoadingStatus('Extraindo contatos diretos (PF & PJ), intenção de busca e localização...');
-      const response = await searchGoogleLeads(
-        effectiveTerm, 
-        effectiveLoc, 
-        leadCount, 
-        apiConfig, 
-        effectiveObjective,
-        1,
-        0,
-        [],
-        targetEntityType,
-        'cluster',
-        freshSeed
-      );
+
+      // 🔀 ROTEAMENTO: B2C (Radar de Intenção de Compra) vs B2B (Empresas & Decisores)
+      let response;
+      if (targetEntityType === 'pf') {
+        setLoadingStatus(`🎯 Rastreando menções públicas de pessoas buscando comprar "${effectiveTerm}"...`);
+        await new Promise((r) => setTimeout(r, 150));
+        response = await searchB2CLeads(effectiveTerm, effectiveLoc, leadCount);
+      } else {
+        setLoadingStatus('Extraindo contatos diretos (PF & PJ), intenção de busca e localização...');
+        response = await searchGoogleLeads(
+          effectiveTerm, 
+          effectiveLoc, 
+          leadCount, 
+          apiConfig, 
+          effectiveObjective,
+          1,
+          0,
+          [],
+          targetEntityType,
+          'cluster',
+          freshSeed
+        );
+      }
 
       setExtractedList(response.leads);
       setHarvestedNames(response.leads.map(l => l.name));
@@ -386,19 +402,25 @@ export function ExtractionHero({
     const nextPage = currentPage + 1;
 
     try {
-      const response = await searchGoogleLeads(
-        effectiveTerm,
-        locationTerm,
-        leadCount,
-        apiConfig,
-        searchObjective.trim(),
-        nextPage,
-        extractedList.length,
-        harvestedNames,
-        targetEntityType,
-        'cluster',
-        Date.now()
-      );
+      // Para B2C, sempre pega nova safra via mesma rota (não tem paginação real ainda)
+      let response;
+      if (targetEntityType === 'pf') {
+        response = await searchB2CLeads(effectiveTerm, locationTerm, leadCount);
+      } else {
+        response = await searchGoogleLeads(
+          effectiveTerm,
+          locationTerm,
+          leadCount,
+          apiConfig,
+          searchObjective.trim(),
+          nextPage,
+          extractedList.length,
+          harvestedNames,
+          targetEntityType,
+          'cluster',
+          Date.now()
+        );
+      }
 
       if (response.leads && response.leads.length > 0) {
         const newTotalList = [...extractedList, ...response.leads];
@@ -791,9 +813,8 @@ export function ExtractionHero({
                 )}
               </div>
 
-              {/* 3 Pilares Integrados de Consulta: 1. O que buscar | 2. Cidade & Estado | 3. Requisito ou Intenção Específica */}
+              {/* 3 Pilares Integrados de Consulta */}
               <div className="space-y-3">
-                {/* Linha 1: Item 1 (O que buscar) + Item 2 (Cidade & Estado) + Qtd + Botões de Ação */}
                 <div className="grid grid-cols-1 md:grid-cols-12 gap-3">
                   
                   {/* Item 1: O que você quer buscar? */}
@@ -806,7 +827,11 @@ export function ExtractionHero({
                       <input
                         id="search-term-input"
                         type="text"
-                        placeholder="Ex: Posto de combustível, Supermercado..."
+                        placeholder={
+                          targetEntityType === 'pf'
+                            ? 'Ex: caminhonete usada, balança para gado, tênis de corrida...'
+                            : 'Ex: Posto de combustível, Supermercado...'
+                        }
                         value={searchTerm}
                         onChange={(e) => handleSearchTermChange(e.target.value)}
                         disabled={isLoading || isLoadingMore}
@@ -912,7 +937,7 @@ export function ExtractionHero({
 
                 </div>
 
-                {/* Linha 2: Item 3: Requisito ou Intenção Específica (Totalmente sincronizado e coerente) */}
+                {/* Linha 2: Item 3: Requisito ou Intenção Específica */}
                 <div className="relative flex items-center rounded-xl bg-zinc-900/90 px-3.5 py-2.5 border border-zinc-800 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500/30 transition">
                   <Target className="h-5 w-5 text-amber-400 shrink-0 mr-2.5" />
                   <div className="w-full">
@@ -966,7 +991,7 @@ export function ExtractionHero({
                   )}
                 </div>
 
-                {/* Barra de Auditoria de Integração Multi-Fontes em Tempo Real */}
+                {/* Barra de Auditoria de Integração Multi-Fontes */}
                 <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-zinc-400 pt-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="text-zinc-500 font-medium">Fontes Auditadas em Tempo Real:</span>
@@ -1106,7 +1131,7 @@ export function ExtractionHero({
           </div>
         )}
 
-        {/* Search Intelligence Summary Meta Box (If Available) */}
+        {/* Search Intelligence Summary Meta Box */}
         {searchMeta && (
           <div className="mt-6 rounded-xl border border-indigo-500/30 bg-gradient-to-r from-indigo-950/40 via-purple-950/30 to-zinc-950/80 p-4 sm:p-5 shadow-xl animate-in fade-in">
             <div className="flex items-center gap-2 text-indigo-300 font-bold text-xs uppercase tracking-wider mb-2">
@@ -1154,7 +1179,7 @@ export function ExtractionHero({
           </div>
         )}
 
-        {/* Empty state alert when no audited leads are found */}
+        {/* Empty state alert */}
         {!isLoading && !error && searchMeta && extractedList.length === 0 && (
           <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-950/20 p-5 text-center animate-in fade-in">
             <div className="flex items-center justify-center gap-2 text-amber-400 font-bold text-sm mb-1">
@@ -1182,7 +1207,7 @@ export function ExtractionHero({
                 </div>
                 {(searchTerm || locationTerm) && (
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Filtro: <strong className="text-zinc-200">{searchTerm || 'Geral'}</strong> {locationTerm ? <>em <strong className="text-emerald-300">{locationTerm}</strong></> : ''} • Decisor: <span className="text-amber-300 font-medium">Gerente de Compras & Suprimentos</span>
+                    Filtro: <strong className="text-zinc-200">{searchTerm || 'Geral'}</strong> {locationTerm ? <>em <strong className="text-emerald-300">{locationTerm}</strong></> : ''} • {targetEntityType === 'pf' ? <span className="text-purple-300 font-medium">Radar de Intenção (B2C)</span> : <span className="text-amber-300 font-medium">Gerente de Compras & Suprimentos</span>}
                   </p>
                 )}
               </div>
@@ -1202,7 +1227,7 @@ export function ExtractionHero({
                   type="button"
                   onClick={handleDownloadResultsCSV}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-emerald-500/40 bg-emerald-950/40 hover:bg-emerald-900/60 px-3 py-1.5 text-xs font-bold text-emerald-300 transition shadow-sm hover:shadow-emerald-500/20 cursor-pointer"
-                  title="Baixar lista completa em arquivo CSV formatado com Gerente de Compras, Telefone e Localização"
+                  title="Baixar lista completa em arquivo CSV"
                 >
                   <Download className="h-3.5 w-3.5 text-emerald-400" />
                   <span>Baixar Planilha CSV</span>
@@ -1211,7 +1236,7 @@ export function ExtractionHero({
                   type="button"
                   onClick={handleDownloadResultsTXT}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-zinc-700 bg-zinc-900 hover:bg-zinc-800 px-3 py-1.5 text-xs font-semibold text-zinc-200 transition shadow-sm cursor-pointer"
-                  title="Baixar lista em arquivo de texto formatado (.txt) com telefones e contatos"
+                  title="Baixar lista em arquivo TXT"
                 >
                   <FileText className="h-3.5 w-3.5 text-zinc-400" />
                   <span>Baixar TXT</span>
@@ -1220,27 +1245,22 @@ export function ExtractionHero({
                   type="button"
                   onClick={handleClearResults}
                   className="inline-flex items-center gap-1.5 rounded-lg border border-blue-500/40 bg-blue-950/30 hover:bg-blue-900/50 px-3 py-1.5 text-xs font-semibold text-blue-300 hover:text-white transition cursor-pointer shadow-sm"
-                  title="Limpar resultados da tela mantendo todos os contatos salvos no Total no Banco"
+                  title="Limpar resultados da tela"
                 >
                   <Sparkles className="h-3.5 w-3.5 text-blue-400" />
-                  <span>Limpar Tela (Manter no Banco)</span>
+                  <span>Limpar Tela</span>
                 </button>
-                {onOpenDatabasePage ? (
+                {onOpenDatabasePage && (
                   <button
                     type="button"
                     onClick={onOpenDatabasePage}
                     className="text-xs text-emerald-300 hover:text-white font-medium flex items-center gap-1 ml-1 bg-emerald-950/40 hover:bg-emerald-900/60 border border-emerald-800/60 rounded-lg px-2.5 py-1.5 transition cursor-pointer"
-                    title="Abrir página completa do Banco Geral de Contatos Salvos no Firestore"
+                    title="Abrir página do Banco de Contatos"
                   >
                     <CheckCheck className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>Salvo no Total no Banco</span>
+                    <span>Salvo no Banco</span>
                     <ExternalLink className="h-3 w-3 ml-0.5 text-emerald-400" />
                   </button>
-                ) : (
-                  <span className="text-xs text-emerald-400 font-medium flex items-center gap-1 ml-1 bg-emerald-950/30 border border-emerald-800/40 rounded px-2 py-1">
-                    <CheckCheck className="h-3.5 w-3.5" />
-                    Salvo no Firestore
-                  </span>
                 )}
               </div>
             </div>
@@ -1256,6 +1276,7 @@ export function ExtractionHero({
                 const cleanDecisionPhoneNum = cleanPhone(decisionMakerPhone || lead.phone);
                 const cleanPhoneNum = cleanDecisionPhoneNum || cleanMainPhone;
                 const insta = resolveInstagram(lead);
+                const isB2CMode = targetEntityType === 'pf';
 
                 return (
                   <div
@@ -1263,7 +1284,7 @@ export function ExtractionHero({
                     className="relative rounded-xl border border-zinc-800 bg-zinc-950/90 p-4 sm:p-5 shadow-xl hover:border-zinc-700 transition flex flex-col justify-between"
                   >
                     <div>
-                      {/* Header: Name + Rating + Entity Type Badge */}
+                      {/* Header */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">
                           <div className="flex items-center gap-2">
@@ -1284,29 +1305,10 @@ export function ExtractionHero({
                           </div>
 
                           <div className="flex flex-wrap items-center gap-1.5 mt-1.5">
-                            {/* Entity Type / Agro Badge */}
-                            {(lead.category?.toLowerCase().includes('rural') || 
-                              lead.category?.toLowerCase().includes('cana') || 
-                              lead.category?.toLowerCase().includes('fazenda') ||
-                              lead.category?.toLowerCase().includes('canavieir') ||
-                              lead.company?.toLowerCase().includes('fazenda') ||
-                              lead.name.toLowerCase().includes('fazenda') ||
-                              lead.name.toLowerCase().includes('estância') ||
-                              lead.decisionMaker?.toLowerCase().includes('produtor')) ? (
-                              <span className="inline-flex items-center gap-1 rounded bg-emerald-500/15 border border-emerald-500/40 px-2 py-0.5 text-[10px] font-bold text-emerald-300 shadow-sm shadow-emerald-500/10">
-                                <Tractor className="h-3 w-3 text-emerald-400" />
-                                <span>Produtor Rural / Fazenda</span>
-                              </span>
-                            ) : (
-                              lead.category?.toLowerCase().includes('posto') || 
-                              lead.category?.toLowerCase().includes('combust') || 
-                              lead.company?.toLowerCase().includes('posto') ||
-                              lead.name.toLowerCase().includes('posto') ||
-                              (lead.decisionMaker?.toLowerCase().includes('compras') && (lead.department?.toLowerCase().includes('combust') || lead.category?.toLowerCase().includes('combust')))
-                            ) ? (
-                              <span className="inline-flex items-center gap-1 rounded bg-amber-500/15 border border-amber-500/40 px-2 py-0.5 text-[10px] font-bold text-amber-300 shadow-sm shadow-amber-500/10">
-                                <Fuel className="h-3 w-3 text-amber-400" />
-                                <span>Posto de Combustível</span>
+                            {isB2CMode ? (
+                              <span className="inline-flex items-center gap-1 rounded bg-purple-500/15 border border-purple-500/40 px-2 py-0.5 text-[10px] font-bold text-purple-300 shadow-sm shadow-purple-500/10">
+                                <Target className="h-3 w-3 text-purple-400" />
+                                <span>🎯 Intenção de Compra Detectada</span>
                               </span>
                             ) : lead.entityType === 'pf' ? (
                               <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 text-[10px] font-bold text-purple-300">
@@ -1331,122 +1333,36 @@ export function ExtractionHero({
                                 <span>{lead.demandTimeframe}</span>
                               </span>
                             )}
-                            {(hasPurchaseIntent(searchObjective) || (lead.trendingInsights && lead.trendingInsights.length > 0)) && (
-                              <span 
-                                className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 border border-orange-500/40 px-2 py-0.5 text-[10px] font-bold text-amber-300 shadow-sm shadow-orange-500/10"
-                                title="Alerta de Necessidade: Intenção de compra detectada"
-                              >
-                                <Flame className="h-3 w-3 text-orange-400 fill-orange-400 animate-pulse shrink-0" />
-                                <span>Alerta de Necessidade</span>
-                              </span>
-                            )}
                           </div>
                         </div>
 
-                        {lead.rating && (
+                        {lead.rating && lead.rating > 0 && (
                           <div className="flex items-center gap-1 rounded-md bg-amber-500/10 border border-amber-500/20 px-2 py-1 text-xs font-bold text-amber-400 shrink-0">
                             <Star className="h-3.5 w-3.5 fill-amber-400 text-amber-400" />
                             <span>{lead.rating}</span>
-                            {lead.reviewsCount && (
-                              <span className="text-[10px] text-amber-500 font-normal">
-                                ({lead.reviewsCount})
-                              </span>
-                            )}
                           </div>
                         )}
                       </div>
 
-                      {/* Specialized Farm & Producer Info or Decision Maker Box */}
-                      {(lead.category?.toLowerCase().includes('rural') || 
-                        lead.category?.toLowerCase().includes('cana') || 
-                        lead.category?.toLowerCase().includes('fazenda') ||
-                        lead.category?.toLowerCase().includes('canavieir') ||
-                        lead.company?.toLowerCase().includes('fazenda') ||
-                        lead.name.toLowerCase().includes('fazenda') ||
-                        lead.name.toLowerCase().includes('estância') ||
-                        lead.decisionMaker?.toLowerCase().includes('produtor')) ? (
-                        <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2.5 space-y-2 text-xs">
-                          <div className="flex items-start gap-1.5 text-emerald-200">
-                            <Tractor className="h-3.5 w-3.5 text-emerald-400 shrink-0 mt-0.5" />
-                            <div>
-                              <span className="block text-[10px] uppercase font-bold text-emerald-400 tracking-wider">
-                                Nome da Fazenda / Propriedade Rural
+                      {/* Info Box B2C */}
+                      {isB2CMode && (
+                        <div className="mt-3 rounded-lg border border-purple-500/30 bg-purple-950/20 p-2.5 space-y-1.5 text-xs">
+                          <div className="flex items-start gap-1.5 text-purple-200">
+                            <Target className="h-3.5 w-3.5 text-purple-400 shrink-0 mt-0.5" />
+                            <div className="min-w-0">
+                              <span className="block text-[10px] uppercase font-bold text-purple-400 tracking-wider">
+                                Trecho da Menção Pública
                               </span>
-                              <span className="font-bold text-white text-xs">
-                                {lead.company || (lead.name.includes('-') ? lead.name.split('-')[0].trim() : lead.name)}
+                              <span className="text-purple-100 text-[11px] leading-relaxed">
+                                {lead.decisionMaker || lead.trendingInsights?.[0] || 'Menção pública detectada'}
                               </span>
                             </div>
                           </div>
-
-                          {lead.decisionMaker && (
-                            <div className="flex items-start gap-1.5 text-indigo-200">
-                              <UserCheck className="h-3.5 w-3.5 text-indigo-400 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="block text-[10px] uppercase font-bold text-indigo-400 tracking-wider">
-                                  Nome do Produtor Rural / Titular
-                                </span>
-                                <span className="font-semibold text-xs text-indigo-100">{lead.decisionMaker}</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {lead.department && (
-                            <div className="flex items-start gap-1.5 text-zinc-300">
-                              <Briefcase className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                                  Capacidade Produtiva, Safra & Destino
-                                </span>
-                                <span className="text-zinc-200">{lead.department}</span>
-                              </div>
-                            </div>
-                          )}
                         </div>
-                      ) : (
-                        lead.category?.toLowerCase().includes('posto') || 
-                        lead.category?.toLowerCase().includes('combust') || 
-                        lead.company?.toLowerCase().includes('posto') ||
-                        lead.name.toLowerCase().includes('posto') ||
-                        (lead.decisionMaker?.toLowerCase().includes('compras') && (lead.department?.toLowerCase().includes('combust') || lead.category?.toLowerCase().includes('combust')))
-                      ) ? (
-                        <div className="mt-3 rounded-lg border border-amber-500/30 bg-amber-950/20 p-2.5 space-y-2 text-xs">
-                          <div className="flex items-start gap-1.5 text-amber-200">
-                            <Fuel className="h-3.5 w-3.5 text-amber-400 shrink-0 mt-0.5" />
-                            <div>
-                              <span className="block text-[10px] uppercase font-bold text-amber-400 tracking-wider">
-                                Posto & Rede de Abastecimento
-                              </span>
-                              <span className="font-bold text-white text-xs">
-                                {lead.company || lead.name}
-                              </span>
-                            </div>
-                          </div>
+                      )}
 
-                          {lead.decisionMaker && (
-                            <div className="flex items-start gap-1.5 text-orange-200">
-                              <UserCheck className="h-3.5 w-3.5 text-orange-400 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="block text-[10px] uppercase font-bold text-orange-400 tracking-wider">
-                                  Gerente de Compras & Suprimentos
-                                </span>
-                                <span className="font-semibold text-xs text-orange-100">{lead.decisionMaker}</span>
-                              </div>
-                            </div>
-                          )}
-
-                          {lead.department && (
-                            <div className="flex items-start gap-1.5 text-zinc-300">
-                              <Briefcase className="h-3.5 w-3.5 text-zinc-400 shrink-0 mt-0.5" />
-                              <div>
-                                <span className="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                                  Setor & Especialidade de Compras
-                                </span>
-                                <span className="text-zinc-200">{lead.department}</span>
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      ) : (lead.decisionMaker || lead.department || lead.company) ? (
+                      {/* Info Box B2B - Empresa / Decisor */}
+                      {!isB2CMode && (lead.decisionMaker || lead.department || lead.company) && (
                         <div className="mt-3 rounded-lg border border-indigo-500/30 bg-indigo-950/30 p-2.5 space-y-1 text-xs">
                           {lead.company && (
                             <div className="flex items-start gap-1.5 text-zinc-200 mb-1">
@@ -1477,10 +1393,10 @@ export function ExtractionHero({
                             </div>
                           )}
                         </div>
-                      ) : null}
+                      )}
 
                       {/* CNPJ & Legal Verification Badge */}
-                      {(lead.cnpj || lead.legalSource || lead.entityType === 'pj') && (
+                      {!isB2CMode && (lead.cnpj || lead.legalSource) && (
                         <div className="mt-2.5 rounded-lg border border-indigo-500/30 bg-indigo-950/20 p-2 text-[11px] flex flex-col gap-1">
                           <div className="flex items-center justify-between gap-1">
                             <span className="font-bold text-indigo-300 flex items-center gap-1 text-[10px] uppercase">
@@ -1493,16 +1409,12 @@ export function ExtractionHero({
                               </span>
                             )}
                           </div>
-                          <p className="text-[10px] text-zinc-400 leading-tight">
-                            {lead.legalSource || 'Origem: Contrato Social / Junta Comercial / Registro em Cartório e QSA Receita Federal'}
-                          </p>
                         </div>
                       )}
 
-                      {/* Extracted Phone Sections (Dual: Establishment + Decision Maker / Partner) */}
+                      {/* Phones */}
                       {hasDistinctLeadPhones ? (
                         <div className="mt-2.5 space-y-2">
-                          {/* Number 1: Decision Maker / Buyer / Partner WhatsApp */}
                           <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2.5 flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-emerald-500/10 text-emerald-400">
@@ -1510,30 +1422,27 @@ export function ExtractionHero({
                               </div>
                               <div className="min-w-0">
                                 <span className="block text-[9px] uppercase font-bold text-emerald-400 truncate">
-                                  WhatsApp Direto ({lead.decisionMaker || 'Gerente de Compras & Suprimentos / Sócio'})
+                                  WhatsApp Direto
                                 </span>
                                 <span className="font-mono text-xs sm:text-sm font-bold text-emerald-300 truncate block">
                                   {decisionMakerPhone}
                                 </span>
                               </div>
                             </div>
-
                             <div className="flex items-center gap-1 shrink-0">
                               <a
                                 href={`https://wa.me/${cleanDecisionPhoneNum}`}
                                 target="_blank"
                                 rel="noreferrer"
                                 className="rounded bg-emerald-600 hover:bg-emerald-500 px-2 py-1 text-[11px] font-semibold text-white transition flex items-center gap-1 shadow-sm"
-                                title="Abrir WhatsApp direto do Decisor"
                               >
                                 <MessageSquare className="h-3 w-3" />
                                 <span>Zap</span>
                               </a>
                               <button
                                 type="button"
-                                onClick={() => handleCopyPhone(decisionMakerPhone, index)}
+                                onClick={() => handleCopyPhone(decisionMakerPhone!, index)}
                                 className="flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white transition"
-                                title="Copiar WhatsApp do Decisor"
                               >
                                 {copiedIndex === index ? (
                                   <>
@@ -1550,7 +1459,6 @@ export function ExtractionHero({
                             </div>
                           </div>
 
-                          {/* Number 2: Establishment Phone (Fixed / PABX) */}
                           <div className="rounded-lg border border-cyan-500/30 bg-cyan-950/20 p-2.5 flex items-center justify-between gap-2">
                             <div className="flex items-center gap-2 min-w-0">
                               <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-cyan-500/10 text-cyan-400">
@@ -1558,45 +1466,25 @@ export function ExtractionHero({
                               </div>
                               <div className="min-w-0">
                                 <span className="block text-[9px] uppercase font-bold text-cyan-400 truncate">
-                                  Telefone Estabelecimento (Fixo / PABX)
+                                  Telefone Estabelecimento
                                 </span>
                                 <span className="font-mono text-xs sm:text-sm font-bold text-cyan-200 truncate block">
                                   {establishmentPhone}
                                 </span>
                               </div>
                             </div>
-
                             <div className="flex items-center gap-1 shrink-0">
                               <a
                                 href={`tel:${cleanEstPhoneNum}`}
                                 className="rounded border border-zinc-700 bg-zinc-800 hover:bg-zinc-700 px-2 py-1 text-[11px] font-semibold text-zinc-200 transition flex items-center gap-1"
-                                title="Ligar para o estabelecimento"
                               >
                                 <PhoneCall className="h-3 w-3 text-cyan-400" />
                                 <span>Ligar</span>
                               </a>
-                              <button
-                                type="button"
-                                onClick={() => handleCopyEstPhone(establishmentPhone, index)}
-                                className="flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-1 text-[11px] font-medium text-zinc-300 hover:bg-zinc-800 hover:text-white transition"
-                                title="Copiar telefone do estabelecimento"
-                              >
-                                {copiedEstIndex === index ? (
-                                  <>
-                                    <Check className="h-3 w-3 text-cyan-400" />
-                                    <span className="text-cyan-400">OK</span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <Copy className="h-3 w-3" />
-                                    <span>Copiar</span>
-                                  </>
-                                )}
-                              </button>
                             </div>
                           </div>
                         </div>
-                      ) : (
+                      ) : lead.phone ? (
                         <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
                             <Phone className="h-4 w-4 text-emerald-400 shrink-0" />
@@ -1609,12 +1497,10 @@ export function ExtractionHero({
                               </span>
                             </div>
                           </div>
-
                           <button
                             type="button"
                             onClick={() => handleCopyPhone(lead.phone, index)}
                             className="flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2.5 py-1 text-xs font-medium text-zinc-300 hover:text-white transition shrink-0"
-                            title="Copiar telefone"
                           >
                             {copiedIndex === index ? (
                               <>
@@ -1629,9 +1515,9 @@ export function ExtractionHero({
                             )}
                           </button>
                         </div>
-                      )}
+                      ) : null}
 
-                      {/* Extracted Email Highlight */}
+                      {/* Email */}
                       {lead.email && (
                         <div className="mt-2 rounded-lg border border-sky-500/30 bg-sky-950/20 p-2.5 flex items-center justify-between gap-2">
                           <div className="flex items-center gap-2 min-w-0">
@@ -1643,18 +1529,15 @@ export function ExtractionHero({
                               <a
                                 href={`mailto:${lead.email}`}
                                 className="font-mono text-xs text-sky-200 hover:text-sky-100 hover:underline truncate block"
-                                title={lead.email}
                               >
                                 {lead.email}
                               </a>
                             </div>
                           </div>
-
                           <button
                             type="button"
                             onClick={() => handleCopyEmail(lead.email!, index)}
                             className="flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 px-2 py-1 text-xs font-medium text-zinc-300 hover:text-white transition shrink-0"
-                            title="Copiar e-mail"
                           >
                             {copiedEmailIndex === index ? (
                               <>
@@ -1671,64 +1554,12 @@ export function ExtractionHero({
                         </div>
                       )}
 
-                      {/* Extracted Instagram Highlight with Official Logo & Real Link */}
-                      <div className="mt-2.5 rounded-lg border border-pink-500/30 bg-gradient-to-r from-pink-950/25 via-purple-950/20 to-zinc-900/40 p-2.5 flex items-center justify-between gap-2.5">
-                        <div className="flex items-center gap-2.5 min-w-0">
-                          <InstagramLogo size={24} className="shrink-0 rounded-md shadow-sm" />
-                          <div className="min-w-0">
-                            <span className="block text-[9px] uppercase font-bold text-pink-400 tracking-wider">
-                              Instagram ({lead.entityType === 'pf' ? 'Perfil Pessoal/Profissional' : 'Perfil Institucional Oficial'})
-                            </span>
-                            <a
-                              href={insta.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="font-mono text-xs font-bold text-pink-200 hover:text-white hover:underline truncate block"
-                              title={`Abrir perfil do Instagram: ${insta.url}`}
-                            >
-                              {insta.handle}
-                            </a>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center gap-1.5 shrink-0">
-                          <a
-                            href={insta.url}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="flex items-center gap-1 rounded bg-pink-950/70 border border-pink-700/50 hover:border-pink-400 px-2 py-1 text-[10px] font-medium text-pink-200 hover:text-white transition shadow-sm"
-                            title="Acessar página no Instagram"
-                          >
-                            <ExternalLink className="h-3 w-3" />
-                            <span>Abrir</span>
-                          </a>
-                          <button
-                            type="button"
-                            onClick={() => handleCopyInstagram(insta.handle, index)}
-                            className="flex items-center gap-1 rounded bg-zinc-900 border border-zinc-800 hover:border-zinc-700 px-2 py-1 text-xs font-medium text-zinc-300 hover:text-white transition shrink-0 cursor-pointer"
-                            title="Copiar Instagram"
-                          >
-                            {copiedInstagramIndex === index ? (
-                              <>
-                                <Check className="h-3 w-3 text-pink-400" />
-                                <span className="text-pink-400">Copiado</span>
-                              </>
-                            ) : (
-                              <>
-                                <Copy className="h-3 w-3" />
-                                <span>Copiar</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Location Highlight */}
+                      {/* Location */}
                       <div className="mt-2.5 flex items-start gap-2 text-xs text-zinc-300 bg-zinc-900/60 p-2.5 rounded-lg border border-zinc-800/80">
                         <MapPin className="h-4 w-4 text-rose-400 shrink-0 mt-0.5" />
                         <div className="min-w-0 flex-1">
                           <span className="block text-[10px] uppercase font-bold text-zinc-500">
-                            Localização Maps
+                            Localização / Fonte
                           </span>
                           <p className="text-xs text-zinc-200 line-clamp-2" title={lead.location}>
                             {lead.location}
@@ -1736,38 +1567,8 @@ export function ExtractionHero({
                         </div>
                       </div>
 
-                      {/* Trending Insights on Card */}
-                      {lead.trendingInsights && lead.trendingInsights.length > 0 && (
-                        <div className="mt-2.5 rounded-lg bg-zinc-900/80 p-2 border border-zinc-800">
-                          <span className="block text-[10px] uppercase font-bold text-amber-400 mb-1 flex items-center gap-1">
-                            <TrendingUp className="h-3 w-3" />
-                            Produtos Buscados para Compra (Recentes):
-                          </span>
-                          <div className="flex flex-wrap gap-1">
-                            {lead.trendingInsights.slice(0, 3).map((item, idx) => (
-                              <span key={idx} className="rounded bg-zinc-950 px-1.5 py-0.5 text-[10px] text-zinc-300 border border-zinc-800">
-                                {item}
-                              </span>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Competitor Prices on Card */}
-                      {lead.competitorPrices && (
-                        <div className="mt-2.5 rounded-lg bg-emerald-950/20 border border-emerald-500/20 p-2 text-xs text-emerald-200">
-                          <span className="block text-[10px] uppercase font-bold text-emerald-400 mb-0.5 flex items-center gap-1">
-                            <DollarSign className="h-3 w-3 text-emerald-400" />
-                            Preços de Concorrentes & Margens:
-                          </span>
-                          <p className="text-[11px] text-zinc-300 leading-relaxed">
-                            {lead.competitorPrices}
-                          </p>
-                        </div>
-                      )}
-
-                      {/* Pitch Recommendation on Card */}
-                      {lead.pitchRecommendation && (
+                      {/* Pitch Recommendation (B2B) */}
+                      {!isB2CMode && lead.pitchRecommendation && (
                         <div className="mt-2.5 rounded-lg bg-indigo-950/20 border border-indigo-500/20 p-2 text-xs text-indigo-200">
                           <span className="block text-[10px] uppercase font-bold text-indigo-400 mb-0.5 flex items-center gap-1">
                             <Sparkles className="h-3 w-3" />
@@ -1783,35 +1584,38 @@ export function ExtractionHero({
                     {/* Direct Links & Quick Sales Action */}
                     <div className="mt-4 pt-3 border-t border-zinc-800/80 flex items-center justify-between gap-2">
                       <a
-                        href={lead.profileUrl || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(`${lead.name}, ${lead.location}`)}`}
+                        href={lead.profileUrl || `https://www.google.com/search?q=${encodeURIComponent(`${lead.name} ${lead.location}`)}`}
                         target="_blank"
                         rel="noreferrer"
                         className="inline-flex items-center gap-1 text-xs font-medium text-indigo-400 hover:text-indigo-300 transition"
-                        title="Abrir no Google Maps"
+                        title="Abrir menção original"
                       >
-                        <span>Ver no Maps</span>
+                        <span>{isB2CMode ? 'Ver Menção Original' : 'Ver no Maps'}</span>
                         <ExternalLink className="h-3 w-3" />
                       </a>
 
                       <div className="flex items-center gap-1.5">
-                        <a
-                          href={`https://wa.me/${cleanPhoneNum}`}
-                          target="_blank"
-                          rel="noreferrer"
-                          className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition shadow-sm"
-                        >
-                          <MessageSquare className="h-3.5 w-3.5" />
-                          <span>WhatsApp</span>
-                        </a>
+                        {lead.phone && (
+                          <a
+                            href={`https://wa.me/${cleanPhoneNum}`}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-500 transition shadow-sm"
+                          >
+                            <MessageSquare className="h-3.5 w-3.5" />
+                            <span>WhatsApp</span>
+                          </a>
+                        )}
 
-                        <a
-                          href={hasDistinctLeadPhones ? `tel:${cleanEstPhoneNum}` : `tel:${cleanPhoneNum}`}
-                          className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-700 transition"
-                          title={hasDistinctLeadPhones ? "Ligar para o estabelecimento (Fixo)" : "Ligar"}
-                        >
-                          <PhoneCall className="h-3.5 w-3.5 text-indigo-400" />
-                          <span>Ligar</span>
-                        </a>
+                        {lead.phone && (
+                          <a
+                            href={hasDistinctLeadPhones ? `tel:${cleanEstPhoneNum}` : `tel:${cleanPhoneNum}`}
+                            className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1.5 text-xs font-semibold text-zinc-200 hover:bg-zinc-700 transition"
+                          >
+                            <PhoneCall className="h-3.5 w-3.5 text-indigo-400" />
+                            <span>Ligar</span>
+                          </a>
+                        )}
                       </div>
                     </div>
 
@@ -1820,7 +1624,7 @@ export function ExtractionHero({
               })}
             </div>
 
-            {/* Continuous Harvesting / Fetch More Leads Button */}
+            {/* Continuous Harvesting */}
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-900/60 border border-zinc-800/80 rounded-xl p-3.5">
               <div className="text-xs text-zinc-400">
                 <span className="font-semibold text-zinc-200">Safra #{currentPage}:</span> {extractedList.length} clientes reais captados (sem duplicidade).
