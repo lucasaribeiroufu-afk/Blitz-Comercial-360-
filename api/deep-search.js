@@ -3,7 +3,7 @@
 // ============================================================
 
 const CASA_DOS_DADOS_API_KEY = process.env.CASA_DOS_DADOS_API_KEY;
-const GOOGLE_MAPS_API_KEY = process.env.CHAVE_API_DO_GOOGLE_MAPS || process.env.GOOGLE_MAPS_API_KEY;
+const GOOGLE_MAPS_API_KEY = process.env.CHAVE_API_DO_GOOGLE_MAPS;
 
 // Mapeamento de termos → CNAE principal
 const CNAE_MAP = {
