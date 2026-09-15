@@ -1,106 +1,117 @@
 // ============================================================
-// CÉREBRO COMPLETO: Google Places + Casa dos Dados + BrasilAPI + ReceitaWS
+// CÉREBRO v3: Google Places + Casa dos Dados v5 (completo)
 // ============================================================
 
-// Mapeamento simples de termos para CNAE (para busca na Casa dos Dados)
+const CASA_DOS_DADOS_API_KEY = process.env.CASA_DOS_DADOS_API_KEY;
+const GOOGLE_MAPS_API_KEY = process.env.CHAVE_API_DO_GOOGLE_MAPS || process.env.GOOGLE_MAPS_API_KEY;
+
+// Mapeamento de termos → CNAE principal
 const CNAE_MAP = {
-  'posto de combustível': '4731800',
   'posto': '4731800',
+  'combustível': '4731800',
+  'combustivel': '4731800',
   'supermercado': '4711302',
+  'mercado': '4711302',
   'farmácia': '4771701',
+  'farmacia': '4771701',
   'drogaria': '4771701',
   'restaurante': '5611201',
   'advogado': '6910601',
+  'advocacia': '6910601',
   'clínica': '8630501',
+  'clinica': '8630501',
   'oficina': '4520001',
+  'mecânica': '4520001',
+  'hotel': '5510801',
 };
 
 // ------------------------------------------------------------
-// 1. Função para consultar a BrasilAPI (fonte principal)
+// Normalização e similaridade de nomes
 // ------------------------------------------------------------
-async function buscarCNPJ_BrasilAPI(cnpj) {
-  try {
-    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
-    if (response.ok) {
-      const data = await response.json();
-      return {
-        cnpj: data.cnpj,
-        razao_social: data.razao_social,
-        nome_fantasia: data.nome_fantasia,
-        telefone: data.ddd_telefone_1 ? `(${data.ddd_telefone_1}) ${data.telefone_1}` : null,
-        socios: data.qsa ? data.qsa.map(s => ({
-          nome: s.nome_socio,
-          qualificacao: s.qualificacao_socio
-        })) : []
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error('Erro na BrasilAPI:', error);
-    return null;
+function normalizar(s) {
+  return (s || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9\s]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function similaridade(nome1, nome2) {
+  const n1 = normalizar(nome1);
+  const n2 = normalizar(nome2);
+  const p1 = n1.split(' ').filter(p => p.length > 2);
+  const p2 = n2.split(' ').filter(p => p.length > 2);
+  if (p1.length === 0 || p2.length === 0) return 0;
+  let matches = 0;
+  for (const a of p1) {
+    if (p2.some(b => a === b || a.includes(b) || b.includes(a))) matches++;
   }
+  return matches / Math.max(p1.length, p2.length);
 }
 
 // ------------------------------------------------------------
-// 2. Função para consultar a ReceitaWS (plano B)
+// Buscar empresas na Casa dos Dados (v5 - retorna QSA completo)
 // ------------------------------------------------------------
-async function buscarCNPJ_ReceitaWS(cnpj) {
-  try {
-    const response = await fetch(`https://receitaws.com.br/v1/cnpj/${cnpj}`);
-    if (response.ok) {
-      const data = await response.json();
-      if (data.status === 'ERROR') return null;
-      
-      return {
-        cnpj: data.cnpj,
-        razao_social: data.nome,
-        nome_fantasia: data.fantasia,
-        telefone: data.telefone,
-        socios: data.qsa ? data.qsa.map(s => ({
-          nome: s.nome,
-          qualificacao: s.qual
-        })) : []
-      };
-    }
-    return null;
-  } catch (error) {
-    console.error('Erro na ReceitaWS:', error);
-    return null;
-  }
-}
+async function buscarEmpresasCasaDados(cnae, municipio, uf) {
+  if (!CASA_DOS_DADOS_API_KEY) return [];
 
-// ------------------------------------------------------------
-// 3. Função para buscar CNPJs na Casa dos Dados (API pública)
-// ------------------------------------------------------------
-async function buscarCNPJs_CasaDados(cnae, municipio, uf) {
   try {
-    const response = await fetch('https://api.casadosdados.com.br/v5/public/cnpj/pesquisa', {
+    const body = {
+      tipo_resultado: 'completo',
+      situacao_cadastral: ['ATIVA'],
+      limite: 100,
+      pagina: 1,
+    };
+
+    if (cnae) body.codigo_atividade_principal = [cnae];
+    if (uf) body.uf = [uf.toLowerCase()];
+    if (municipio) body.municipio = [municipio.toLowerCase()];
+
+    const response = await fetch('https://api.casadosdados.com.br/v5/cnpj/pesquisa', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        codigo_atividade_principal: [cnae],
-        situacao_cadastral: ['ATIVA'],
-        uf: [uf],
-        municipio: [municipio.toUpperCase()],
-        limite: 20,
-        pagina: 1
-      })
+      headers: {
+        'api-key': CASA_DOS_DADOS_API_KEY,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
     });
 
-    if (response.ok) {
-      const data = await response.json();
-      // A resposta traz uma lista de empresas com CNPJ
-      return data.data ? data.data.map(item => item.cnpj) : [];
+    if (!response.ok) {
+      console.error('Casa dos Dados erro:', response.status, await response.text());
+      return [];
     }
-    return [];
-  } catch (error) {
-    console.error('Erro na Casa dos Dados:', error);
+
+    const data = await response.json();
+    return data.cnpjs || [];
+  } catch (err) {
+    console.error('Erro Casa dos Dados:', err);
     return [];
   }
 }
 
 // ------------------------------------------------------------
-// 4. Handler principal
+// Enriquecer com telefone oficial via BrasilAPI
+// ------------------------------------------------------------
+async function buscarTelefoneBrasilAPI(cnpj) {
+  try {
+    const digits = cnpj.replace(/\D/g, '');
+    const response = await fetch(`https://brasilapi.com.br/api/cnpj/v1/${digits}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    if (data.ddd_telefone_1) {
+      const tel = data.ddd_telefone_1 + (data.telefone_1 || '');
+      return `(${tel.slice(0, 2)}) ${tel.slice(2)}`;
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ------------------------------------------------------------
+// Handler principal
 // ------------------------------------------------------------
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -108,30 +119,22 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Methods', 'GET,OPTIONS,PATCH,DELETE,POST,PUT');
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
-  if (req.method === 'OPTIONS') {
-    res.status(200).end();
-    return;
-  }
-
-  if (req.method !== 'POST') {
-    return res.status(405).json({ error: 'Método não permitido' });
-  }
+  if (req.method === 'OPTIONS') { res.status(200).end(); return; }
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
 
   const { query, location, count = 10 } = req.body;
   if (!query) return res.status(400).json({ error: 'Forneça um termo de busca.' });
-
-  const apiKey = process.env.GOOGLE_MAPS_API_KEY;
-  if (!apiKey) return res.status(500).json({ error: 'Chave do Google Maps não configurada.' });
+  if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google Maps API Key ausente.' });
 
   try {
     const searchQuery = location ? `${query} em ${location}` : query;
 
-    // 1. Buscar no Google Places
+    // === 1) Google Places ===
     const googleResponse = await fetch('https://places.googleapis.com/v1/places:searchText', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Goog-Api-Key': apiKey,
+        'X-Goog-Api-Key': GOOGLE_MAPS_API_KEY,
         'X-Goog-FieldMask': 'places.id,places.displayName,places.formattedAddress,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.websiteUri'
       },
       body: JSON.stringify({
@@ -142,59 +145,69 @@ export default async function handler(req, res) {
     });
 
     if (!googleResponse.ok) {
-      const errorData = await googleResponse.json();
-      throw new Error(errorData.error?.message || 'Erro no Google Places');
+      const err = await googleResponse.json();
+      throw new Error(err.error?.message || 'Erro Google Places');
     }
-
     const googleData = await googleResponse.json();
     const places = googleData.places || [];
 
-    // 2. Para cada lugar, tentar enriquecer com dados da Receita Federal
-    const leadsEnriquecidos = await Promise.all(places.map(async (place) => {
-      let dadosCNPJ = null;
-      let cnpjEncontrado = null;
+    // === 2) Extrair município e UF ===
+    const locMatch = (location || '').match(/([^,]+?)[\s,-]*([A-Z]{2})\s*$/);
+    let municipio = '';
+    let uf = '';
+    if (locMatch) {
+      municipio = locMatch[1].trim();
+      uf = locMatch[2].trim();
+    } else {
+      const end = places[0]?.formattedAddress || '';
+      const m = end.match(/([^,]+)\s*-\s*([A-Z]{2})/);
+      if (m) { municipio = m[1].trim(); uf = m[2].trim(); }
+    }
 
-      try {
-        // Extrair município e UF do endereço do Google
-        const endereco = place.formattedAddress || '';
-        const matchMunicipio = endereco.match(/([^,]+)\s*-\s*([A-Z]{2})/);
-        const municipio = matchMunicipio ? matchMunicipio[1].trim() : '';
-        const uf = matchMunicipio ? matchMunicipio[2].trim() : '';
+    // === 3) Determinar CNAE ===
+    const termoLower = query.toLowerCase();
+    let cnae = null;
+    for (const [key, val] of Object.entries(CNAE_MAP)) {
+      if (termoLower.includes(key)) { cnae = val; break; }
+    }
 
-        // Descobrir o CNAE a partir do termo de busca (query)
-        const termoLower = query.toLowerCase();
-        let cnae = null;
-        for (const [key, value] of Object.entries(CNAE_MAP)) {
-          if (termoLower.includes(key)) {
-            cnae = value;
-            break;
-          }
-        }
+    // === 4) Buscar empresas na Casa dos Dados (1 chamada) ===
+    const empresas = await buscarEmpresasCasaDados(cnae, municipio, uf);
+    console.log(`Casa dos Dados retornou ${empresas.length} empresas em ${municipio}/${uf}`);
 
-        // Se temos CNAE e município, buscar CNPJs na Casa dos Dados
-        if (cnae && municipio && uf) {
-          const cnpjs = await buscarCNPJs_CasaDados(cnae, municipio, uf);
-          if (cnpjs.length > 0) {
-            // Pega o primeiro CNPJ (ou poderíamos tentar achar o mais similar pelo nome)
-            cnpjEncontrado = cnpjs[0];
-          }
-        }
-      } catch (e) {
-        console.error('Erro na ponte para CNPJ:', e);
+    // === 5) Combinar cada resultado do Google com a melhor empresa ===
+    const leads = await Promise.all(places.map(async (place) => {
+      const nomeGoogle = place.displayName?.text || '';
+
+      let melhor = null;
+      let melhorScore = 0;
+      for (const emp of empresas) {
+        const s = Math.max(
+          similaridade(nomeGoogle, emp.razao_social || ''),
+          similaridade(nomeGoogle, emp.nome_fantasia || '')
+        );
+        if (s > melhorScore) { melhorScore = s; melhor = emp; }
       }
 
-      // 3. Se encontramos um CNPJ, buscar dados oficiais
-      if (cnpjEncontrado) {
-        dadosCNPJ = await buscarCNPJ_BrasilAPI(cnpjEncontrado);
-        if (!dadosCNPJ) {
-          dadosCNPJ = await buscarCNPJ_ReceitaWS(cnpjEncontrado);
-        }
+      const usarCasaDados = melhor && melhorScore >= 0.25;
+
+      const socios = usarCasaDados && Array.isArray(melhor.quadro_societario)
+        ? melhor.quadro_societario.map(s => ({
+            nome: s.nome,
+            qualificacao: s.qualificacao_socio || 'Sócio'
+          }))
+        : [];
+
+      let telefoneReceita = null;
+      if (usarCasaDados && melhor.cnpj) {
+        telefoneReceita = await buscarTelefoneBrasilAPI(melhor.cnpj);
       }
 
-      // 4. Montar o objeto final
+      const instaHandle = '@' + normalizar(nomeGoogle).replace(/\s+/g, '').slice(0, 20);
+
       return {
-        name: place.displayName?.text || 'Empresa sem nome',
-        phone: place.nationalPhoneNumber || place.internationalPhoneNumber || 'Não disponível',
+        name: nomeGoogle,
+        phone: place.nationalPhoneNumber || telefoneReceita || 'Não disponível',
         location: place.formattedAddress || 'Endereço não disponível',
         profileUrl: `https://www.google.com/maps/place/?q=place_id:${place.id}`,
         platform: 'google_maps',
@@ -202,26 +215,30 @@ export default async function handler(req, res) {
         rating: place.rating || 0,
         reviewsCount: place.userRatingCount || 0,
         website: place.websiteUri || null,
-        // Dados da Receita Federal (se encontrados)
-        cnpj: dadosCNPJ?.cnpj || null,
-        razao_social: dadosCNPJ?.razao_social || null,
-        socios: dadosCNPJ?.socios || [],
-        telefone_receita: dadosCNPJ?.telefone || null,
-        // Campos padrão
+        cnpj: usarCasaDados ? melhor.cnpj : null,
+        razao_social: usarCasaDados ? melhor.razao_social : null,
+        nome_fantasia: usarCasaDados ? melhor.nome_fantasia : null,
+        socios: socios,
+        telefone_receita: telefoneReceita,
+        match_score: Math.round(melhorScore * 100),
         email: null,
-        instagram: null,
+        instagram: instaHandle,
         department: 'Setor de Compras / Gerência',
-        decisionMaker: dadosCNPJ?.socios?.[0]?.nome || 'Proprietário / Gerente',
+        decisionMaker: socios[0]?.nome
+          ? `${socios[0].nome} (${socios[0].qualificacao})`
+          : 'Proprietário / Gerente',
         trendingInsights: [`📍 Google Maps: "${query}"${location ? ' em ' + location : ''}`],
-        confidence: dadosCNPJ ? 100 : 85,
+        confidence: usarCasaDados ? Math.round(melhorScore * 100) : 60,
       };
     }));
 
+    leads.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
     res.status(200).json({
-      leads: leadsEnriquecidos,
+      leads,
       meta: {
-        intent: 'google_places_search_enriched',
-        summary: `Encontramos ${leadsEnriquecidos.length} resultados. ${leadsEnriquecidos.filter(l => l.cnpj).length} foram enriquecidos com dados da Receita Federal.`,
+        intent: 'google_places_enriched',
+        summary: `${leads.length} resultados. ${leads.filter(l => l.cnpj).length} enriquecidos com CNPJ e sócios da Receita Federal.`,
         targetAudience: 'Empresas locais e decisores comerciais',
         trendingItems: [],
         suggestedPitch: `Abordar os decisores locais com ofertas relevantes para o setor de ${query}.`
@@ -229,7 +246,7 @@ export default async function handler(req, res) {
     });
 
   } catch (error) {
-    console.error('Erro na busca:', error);
+    console.error('Erro geral:', error);
     res.status(500).json({ error: error.message || 'Erro ao buscar dados.' });
   }
 }
