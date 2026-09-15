@@ -1,14 +1,12 @@
 // ============================================================
-// CÉREBRO v6: Google Places + Data Stone + Credify + Casa dos Dados + Apify
+// CÉREBRO v7: Google Places + Data Stone + Casa dos Dados + BrasilAPI + Apify
 // ============================================================
 
 const GOOGLE_MAPS_API_KEY = process.env.CHAVE_API_DO_GOOGLE_MAPS;
 const DATA_STONE_API_KEY = process.env.DATA_STONE_API_KEY;
-const CREDIFY_API_KEY = process.env.CREDIFY_API_KEY;
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const CASA_DOS_DADOS_API_KEY = process.env.CASA_DOS_DADOS_API_KEY;
 
-// --- Mapeamentos e utilitários ---
 const CNAE_MAP = {
   'posto': '4731800', 'combustível': '4731800', 'combustivel': '4731800',
   'supermercado': '4711302', 'mercado': '4711302',
@@ -21,7 +19,7 @@ const CNAE_MAP = {
 const CARGOS_DECISORES = [
   'gerente de compras', 'diretor de compras', 'head de compras',
   'coordenador de compras', 'proprietário', 'sócio', 'diretor',
-  'gerente geral', 'comprador'
+  'gerente geral', 'comprador', 'presidente', 'ceo'
 ];
 
 function normalizar(s) {
@@ -43,12 +41,11 @@ function similaridade(nome1, nome2) {
   return matches / Math.max(p1.length, p2.length);
 }
 
-// --- Integrações ---
-
-// 1. Data Stone (Prioridade - busca decisor por CNPJ)
+// --- Data Stone ---
 async function buscarDecisorDataStone(cnpj) {
   if (!DATA_STONE_API_KEY) return null;
   try {
+    const cnpjLimpo = String(cnpj).replace(/\D/g, '');
     const buscaResponse = await fetch('https://api.datastone.com.br/v1/b2b/persons/', {
       method: 'POST',
       headers: {
@@ -58,12 +55,15 @@ async function buscarDecisorDataStone(cnpj) {
       body: JSON.stringify({
         pagina: 1,
         por_pagina: 5,
-        filtros_empresa: { cnpj: [cnpj.replace(/\D/g, '')] },
+        filtros_empresa: { cnpj: [cnpjLimpo] },
         filtros_pessoa: { cargos: CARGOS_DECISORES }
       })
     });
 
-    if (!buscaResponse.ok) return null;
+    if (!buscaResponse.ok) {
+      console.warn('Data Stone busca falhou:', buscaResponse.status);
+      return null;
+    }
     const buscaData = await buscaResponse.json();
     if (!buscaData.dados || buscaData.dados.length === 0) return null;
 
@@ -81,15 +81,16 @@ async function buscarDecisorDataStone(cnpj) {
 
     if (!enrichResponse.ok) return null;
     const enrichData = await enrichResponse.json();
+    const dados = enrichData.dados || {};
 
-    const telefone = enrichData.dados?.telefone || enrichData.dados?.celular;
+    const telefone = dados.telefone || dados.celular;
     if (!telefone) return null;
 
     return {
-      nome: pessoa.nome || enrichData.dados?.nome,
-      cargo: pessoa.cargo || enrichData.dados?.cargo,
+      nome: pessoa.nome || dados.nome,
+      cargo: pessoa.cargo || dados.cargo,
       telefone: telefone,
-      email: enrichData.dados?.email,
+      email: dados.email,
       fonte: 'Data Stone'
     };
   } catch (err) {
@@ -98,44 +99,7 @@ async function buscarDecisorDataStone(cnpj) {
   }
 }
 
-// 2. Credify (Fallback 1 - telefones por CNPJ)
-async function buscarTelefonesCredify(cnpj) {
-  if (!CREDIFY_API_KEY) return [];
-  try {
-    const response = await fetch('https://api.credify.com.br/pjtelefonecnpj', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${CREDIFY_API_KEY}`
-      },
-      body: JSON.stringify({
-        IDCONSULTA: `blitz-${Date.now()}`,
-        CPFCNPJ: cnpj.replace(/\D/g, ''),
-        TIPOPESSOA: 'J'
-      })
-    });
-
-    if (!response.ok) return [];
-    const data = await response.json();
-    const telefones = [];
-    if (data.RESPOSTA?.TELEFONES) {
-      Object.values(data.RESPOSTA.TELEFONES).forEach(reg => {
-        if (reg.TELEFONE) {
-          telefones.push({
-            numero: `(${reg.DDD}) ${reg.TELEFONE}`,
-            whatsapp: reg.WHATSAPP === 'S' || reg.WHATSAPP === true
-          });
-        }
-      });
-    }
-    return telefones;
-  } catch (err) {
-    console.error('Erro Credify:', err);
-    return [];
-  }
-}
-
-// 3. Casa dos Dados (Fallback 2 - sócios e CNPJ)
+// --- Casa dos Dados ---
 async function buscarEmpresasCasaDados(cnae, municipio, uf) {
   if (!CASA_DOS_DADOS_API_KEY) return [];
   try {
@@ -162,7 +126,7 @@ async function buscarEmpresasCasaDados(cnae, municipio, uf) {
   }
 }
 
-// 4. BrasilAPI (Fallback 2 - telefone fixo da Receita)
+// --- BrasilAPI ---
 async function buscarTelefoneBrasilAPI(cnpj) {
   try {
     const digits = String(cnpj).replace(/\D/g, '');
@@ -178,7 +142,7 @@ async function buscarTelefoneBrasilAPI(cnpj) {
   } catch { return null; }
 }
 
-// 5. Apify (validação de WhatsApp em lote)
+// --- Apify ---
 async function validarWhatsAppEmLote(telefones) {
   if (!APIFY_API_TOKEN || telefones.length === 0) return {};
   const phonesLimpos = telefones
@@ -234,7 +198,7 @@ async function buscarGooglePlaces(query, location, count) {
   return data.places || [];
 }
 
-// --- Handler principal ---
+// --- Handler ---
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -249,10 +213,8 @@ export default async function handler(req, res) {
   if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google Maps API Key ausente.' });
 
   try {
-    // 1. Google Places
     const places = await buscarGooglePlaces(query, location, count);
 
-    // 2. Extrair município e UF
     const locMatch = (location || '').match(/([^,]+?)[\s,-]*([A-Z]{2})\s*$/);
     let municipio = '', uf = '';
     if (locMatch) {
@@ -264,22 +226,18 @@ export default async function handler(req, res) {
       if (m) { municipio = m[1].trim(); uf = m[2].trim(); }
     }
 
-    // 3. Determinar CNAE
     const termoLower = query.toLowerCase();
     let cnae = null;
     for (const [key, val] of Object.entries(CNAE_MAP)) {
       if (termoLower.includes(key)) { cnae = val; break; }
     }
 
-    // 4. Buscar empresas na Casa dos Dados (uma vez)
     const empresasCasaDados = await buscarEmpresasCasaDados(cnae, municipio, uf);
     console.log(`Casa dos Dados: ${empresasCasaDados.length} empresas em ${municipio}/${uf}`);
 
-    // 5. Processar cada lead
     const leadsPromises = places.map(async (place) => {
       const nomeGoogle = place.displayName?.text || '';
 
-      // Encontrar CNPJ correspondente
       let melhorMatch = null;
       let melhorScore = 0;
       for (const emp of empresasCasaDados) {
@@ -293,28 +251,84 @@ export default async function handler(req, res) {
       const cnpj = (melhorScore >= 0.25 && melhorMatch) ? melhorMatch.cnpj : null;
 
       let dadosDecisor = null;
-      let telefonesCredify = [];
       let socios = [];
       let telefoneReceita = null;
 
       if (cnpj) {
-        // 5.1. Data Stone (prioridade)
+        // 1. Data Stone (prioridade)
         dadosDecisor = await buscarDecisorDataStone(cnpj);
 
-        // 5.2. Se Data Stone não retornou, tentar Credify
-        if (!dadosDecisor || !dadosDecisor.telefone) {
-          telefonesCredify = await buscarTelefonesCredify(cnpj);
-        }
-
-        // 5.3. Sempre buscar sócios e telefone da Receita como fallback
+        // 2. Sócios da Casa dos Dados (fallback)
         socios = (melhorMatch.quadro_societario || []).map(s => ({
           nome: s.nome,
           qualificacao: s.qualificacao_socio || 'Sócio'
         }));
+
+        // 3. Telefone fixo da Receita (fallback)
         telefoneReceita = await buscarTelefoneBrasilAPI(cnpj);
       }
 
-      // 6. Coletar todos os telefones para validação
       const telefonesParaValidar = [];
       if (dadosDecisor?.telefone) telefonesParaValidar.push(dadosDecisor.telefone);
-     
+      if (telefoneReceita) telefonesParaValidar.push(telefoneReceita);
+      if (place.nationalPhoneNumber) telefonesParaValidar.push(place.nationalPhoneNumber);
+
+      const mapaWhatsApp = await validarWhatsAppEmLote(telefonesParaValidar);
+
+      const telefoneFinal = dadosDecisor?.telefone || telefoneReceita || place.nationalPhoneNumber || 'Não disponível';
+      const numeroLimpo = String(telefoneFinal).replace(/\D/g, '');
+      const numeroFormatado = (numeroLimpo.length === 10 || numeroLimpo.length === 11) ? '55' + numeroLimpo : numeroLimpo;
+      const temWhatsapp = mapaWhatsApp[numeroFormatado] === true ? true : (mapaWhatsApp[numeroFormatado] === false ? false : null);
+
+      return {
+        name: nomeGoogle,
+        phone: telefoneFinal,
+        location: place.formattedAddress || 'Endereço não disponível',
+        profileUrl: `https://www.google.com/maps/place/?q=place_id:${place.id}`,
+        platform: 'google_maps',
+        category: query,
+        rating: place.rating || 0,
+        reviewsCount: place.userRatingCount || 0,
+        website: place.websiteUri || null,
+        cnpj: cnpj,
+        razao_social: melhorMatch?.razao_social || null,
+        nome_fantasia: melhorMatch?.nome_fantasia || null,
+        socios: socios,
+        decisor: dadosDecisor,
+        telefone_receita: telefoneReceita,
+        tem_whatsapp: temWhatsapp,
+        match_score: Math.round(melhorScore * 100),
+        email: null,
+        instagram: `@${normalizar(nomeGoogle).replace(/\s+/g, '').slice(0, 20)}`,
+        department: 'Setor de Compras / Gerência',
+        decisionMaker: dadosDecisor
+          ? `${dadosDecisor.nome} (${dadosDecisor.cargo})`
+          : (socios[0]?.nome ? `${socios[0].nome} (${socios[0].qualificacao})` : 'Proprietário / Gerente'),
+        trendingInsights: [`📍 Google Maps: "${query}"${location ? ' em ' + location : ''}`],
+        confidence: dadosDecisor ? 100 : (cnpj ? 80 : 60),
+      };
+    });
+
+    const leads = await Promise.all(leadsPromises);
+    leads.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+
+    const comWhats = leads.filter(l => l.tem_whatsapp === true).length;
+    const comCnpj = leads.filter(l => l.cnpj).length;
+    const comDecisor = leads.filter(l => l.decisor).length;
+
+    res.status(200).json({
+      leads,
+      meta: {
+        intent: 'google_places_enriched',
+        summary: `${leads.length} resultados. ${comCnpj} com CNPJ. ${comDecisor} com decisor (Data Stone). ${comWhats} com WhatsApp ativo.`,
+        targetAudience: 'Empresas locais e decisores comerciais',
+        trendingItems: [],
+        suggestedPitch: `Abordar os decisores locais com ofertas relevantes para o setor de ${query}.`
+      }
+    });
+
+  } catch (error) {
+    console.error('Erro geral:', error);
+    res.status(500).json({ error: error.message || 'Erro ao buscar dados.' });
+  }
+}
