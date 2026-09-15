@@ -1,11 +1,15 @@
 // ============================================================
-// CÉREBRO v7: Google Places + Data Stone + Casa dos Dados + BrasilAPI + Apify
+// CÉREBRO v8: Google Places + Data Stone (limitado) + Casa dos Dados + BrasilAPI + Apify
+// Estratégia: Máximo 3 créditos Data Stone por busca, com fallback automático
 // ============================================================
 
 const GOOGLE_MAPS_API_KEY = process.env.CHAVE_API_DO_GOOGLE_MAPS;
 const DATA_STONE_API_KEY = process.env.DATA_STONE_API_KEY;
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const CASA_DOS_DADOS_API_KEY = process.env.CASA_DOS_DADOS_API_KEY;
+
+// 🎯 Limite de créditos Data Stone por busca
+const DATA_STONE_MAX_LEADS = 3;
 
 const CNAE_MAP = {
   'posto': '4731800', 'combustível': '4731800', 'combustivel': '4731800',
@@ -41,7 +45,7 @@ function similaridade(nome1, nome2) {
   return matches / Math.max(p1.length, p2.length);
 }
 
-// --- Data Stone ---
+// --- Data Stone (tenta buscar decisor, com tratamento de erro) ---
 async function buscarDecisorDataStone(cnpj) {
   if (!DATA_STONE_API_KEY) return null;
   try {
@@ -94,7 +98,7 @@ async function buscarDecisorDataStone(cnpj) {
       fonte: 'Data Stone'
     };
   } catch (err) {
-    console.error('Erro Data Stone:', err);
+    console.warn('Erro Data Stone (usando fallback):', err.message);
     return null;
   }
 }
@@ -198,7 +202,7 @@ async function buscarGooglePlaces(query, location, count) {
   return data.places || [];
 }
 
-// --- Handler ---
+// --- Handler Principal ---
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -235,9 +239,9 @@ export default async function handler(req, res) {
     const empresasCasaDados = await buscarEmpresasCasaDados(cnae, municipio, uf);
     console.log(`Casa dos Dados: ${empresasCasaDados.length} empresas em ${municipio}/${uf}`);
 
-    const leadsPromises = places.map(async (place) => {
+    // 🔑 PRIMEIRO PASS: montar leads base com CNPJ + score (sem chamar Data Stone)
+    const leadsBase = places.map((place) => {
       const nomeGoogle = place.displayName?.text || '';
-
       let melhorMatch = null;
       let melhorScore = 0;
       for (const emp of empresasCasaDados) {
@@ -247,83 +251,107 @@ export default async function handler(req, res) {
         );
         if (s > melhorScore) { melhorScore = s; melhorMatch = emp; }
       }
-
       const cnpj = (melhorScore >= 0.25 && melhorMatch) ? melhorMatch.cnpj : null;
+      const socios = (melhorMatch?.quadro_societario || []).map(s => ({
+        nome: s.nome,
+        qualificacao: s.qualificacao_socio || 'Sócio'
+      }));
+      return { place, nomeGoogle, melhorMatch, melhorScore, cnpj, socios };
+    });
 
+    // 🔑 ORDENAR por match_score (melhores correspondências primeiro)
+    leadsBase.sort((a, b) => b.melhorScore - a.melhorScore);
+
+    // 🔑 SEGUNDO PASS: chamar Data Stone APENAS para os top N leads com CNPJ
+    let creditosDataStoneUsados = 0;
+    const leadsFinais = await Promise.all(leadsBase.map(async (lb, idx) => {
       let dadosDecisor = null;
-      let socios = [];
       let telefoneReceita = null;
 
-      if (cnpj) {
-        // 1. Data Stone (prioridade)
-        dadosDecisor = await buscarDecisorDataStone(cnpj);
+      const temCnpj = !!lb.cnpj;
+      const dentroDoLimite = idx < DATA_STONE_MAX_LEADS;
 
-        // 2. Sócios da Casa dos Dados (fallback)
-        socios = (melhorMatch.quadro_societario || []).map(s => ({
-          nome: s.nome,
-          qualificacao: s.qualificacao_socio || 'Sócio'
-        }));
-
-        // 3. Telefone fixo da Receita (fallback)
-        telefoneReceita = await buscarTelefoneBrasilAPI(cnpj);
+      // 1. Data Stone (apenas top N)
+      if (temCnpj && dentroDoLimite && creditosDataStoneUsados < DATA_STONE_MAX_LEADS) {
+        dadosDecisor = await buscarDecisorDataStone(lb.cnpj);
+        if (dadosDecisor) {
+          creditosDataStoneUsados++;
+          console.log(`💎 Data Stone usado para ${lb.nomeGoogle} (${creditosDataStoneUsados}/${DATA_STONE_MAX_LEADS})`);
+        }
       }
 
+      // 2. BrasilAPI (fallback ou complemento)
+      if (temCnpj) {
+        telefoneReceita = await buscarTelefoneBrasilAPI(lb.cnpj);
+      }
+
+      // 3. Coletar telefones para validação WhatsApp
       const telefonesParaValidar = [];
       if (dadosDecisor?.telefone) telefonesParaValidar.push(dadosDecisor.telefone);
       if (telefoneReceita) telefonesParaValidar.push(telefoneReceita);
-      if (place.nationalPhoneNumber) telefonesParaValidar.push(place.nationalPhoneNumber);
+      if (lb.place.nationalPhoneNumber) telefonesParaValidar.push(lb.place.nationalPhoneNumber);
 
       const mapaWhatsApp = await validarWhatsAppEmLote(telefonesParaValidar);
 
-      const telefoneFinal = dadosDecisor?.telefone || telefoneReceita || place.nationalPhoneNumber || 'Não disponível';
+      const telefoneFinal = dadosDecisor?.telefone || telefoneReceita || lb.place.nationalPhoneNumber || 'Não disponível';
       const numeroLimpo = String(telefoneFinal).replace(/\D/g, '');
       const numeroFormatado = (numeroLimpo.length === 10 || numeroLimpo.length === 11) ? '55' + numeroLimpo : numeroLimpo;
       const temWhatsapp = mapaWhatsApp[numeroFormatado] === true ? true : (mapaWhatsApp[numeroFormatado] === false ? false : null);
 
+      // Decisor final: Data Stone > 1º Sócio > Genérico
+      const decisorFinal = dadosDecisor || (lb.socios[0] ? {
+        nome: lb.socios[0].nome,
+        cargo: lb.socios[0].qualificacao,
+        fonte: 'Casa dos Dados (QSA)'
+      } : null);
+
       return {
-        name: nomeGoogle,
+        name: lb.nomeGoogle,
         phone: telefoneFinal,
-        location: place.formattedAddress || 'Endereço não disponível',
-        profileUrl: `https://www.google.com/maps/place/?q=place_id:${place.id}`,
+        location: lb.place.formattedAddress || 'Endereço não disponível',
+        profileUrl: `https://www.google.com/maps/place/?q=place_id:${lb.place.id}`,
         platform: 'google_maps',
         category: query,
-        rating: place.rating || 0,
-        reviewsCount: place.userRatingCount || 0,
-        website: place.websiteUri || null,
-        cnpj: cnpj,
-        razao_social: melhorMatch?.razao_social || null,
-        nome_fantasia: melhorMatch?.nome_fantasia || null,
-        socios: socios,
+        rating: lb.place.rating || 0,
+        reviewsCount: lb.place.userRatingCount || 0,
+        website: lb.place.websiteUri || null,
+        cnpj: lb.cnpj,
+        razao_social: lb.melhorMatch?.razao_social || null,
+        nome_fantasia: lb.melhorMatch?.nome_fantasia || null,
+        socios: lb.socios,
         decisor: dadosDecisor,
         telefone_receita: telefoneReceita,
         tem_whatsapp: temWhatsapp,
-        match_score: Math.round(melhorScore * 100),
+        match_score: Math.round(lb.melhorScore * 100),
         email: null,
-        instagram: `@${normalizar(nomeGoogle).replace(/\s+/g, '').slice(0, 20)}`,
+        instagram: `@${normalizar(lb.nomeGoogle).replace(/\s+/g, '').slice(0, 20)}`,
         department: 'Setor de Compras / Gerência',
-        decisionMaker: dadosDecisor
-          ? `${dadosDecisor.nome} (${dadosDecisor.cargo})`
-          : (socios[0]?.nome ? `${socios[0].nome} (${socios[0].qualificacao})` : 'Proprietário / Gerente'),
+        decisionMaker: decisorFinal
+          ? `${decisorFinal.nome} (${decisorFinal.cargo})`
+          : 'Proprietário / Gerente',
         trendingInsights: [`📍 Google Maps: "${query}"${location ? ' em ' + location : ''}`],
-        confidence: dadosDecisor ? 100 : (cnpj ? 80 : 60),
+        confidence: dadosDecisor ? 100 : (lb.cnpj ? 80 : 60),
       };
-    });
+    }));
 
-    const leads = await Promise.all(leadsPromises);
-    leads.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
+    // Reordenar por confidence
+    leadsFinais.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
 
-    const comWhats = leads.filter(l => l.tem_whatsapp === true).length;
-    const comCnpj = leads.filter(l => l.cnpj).length;
-    const comDecisor = leads.filter(l => l.decisor).length;
+    const comWhats = leadsFinais.filter(l => l.tem_whatsapp === true).length;
+    const comCnpj = leadsFinais.filter(l => l.cnpj).length;
+    const comDecisor = leadsFinais.filter(l => l.decisor).length;
+
+    console.log(`✅ Busca finalizada: ${leadsFinais.length} leads, ${comCnpj} com CNPJ, ${comDecisor} com decisor, ${comWhats} com WhatsApp. Créditos Data Stone usados: ${creditosDataStoneUsados}`);
 
     res.status(200).json({
-      leads,
+      leads: leadsFinais,
       meta: {
         intent: 'google_places_enriched',
-        summary: `${leads.length} resultados. ${comCnpj} com CNPJ. ${comDecisor} com decisor (Data Stone). ${comWhats} com WhatsApp ativo.`,
+        summary: `${leadsFinais.length} resultados. ${comCnpj} com CNPJ. ${comDecisor} com decisor. ${comWhats} com WhatsApp ativo. (Data Stone: ${creditosDataStoneUsados} créditos usados)`,
         targetAudience: 'Empresas locais e decisores comerciais',
         trendingItems: [],
-        suggestedPitch: `Abordar os decisores locais com ofertas relevantes para o setor de ${query}.`
+        suggestedPitch: `Abordar os decisores locais com ofertas relevantes para o setor de ${query}.`,
+        creditos_data_stone_usados: creditosDataStoneUsados
       }
     });
 
