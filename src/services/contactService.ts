@@ -54,6 +54,14 @@ export function subscribeContacts(
           whatsapp: data.whatsapp || '',
           decisionMakerPhone: data.decisionMakerPhone || '',
           legalSource: data.legalSource || '',
+          // 🆕 Campos da Casa dos Dados + Apify (antes eram descartados!)
+          tem_whatsapp: data.tem_whatsapp ?? null,
+          telefone_receita: data.telefone_receita || null,
+          razao_social: data.razao_social || null,
+          nome_fantasia: data.nome_fantasia || null,
+          socios: Array.isArray(data.socios) ? data.socios : [],
+          match_score: data.match_score ?? null,
+          website: data.website || null,
           createdAt: data.createdAt?.toMillis ? data.createdAt.toMillis() : (data.createdAt || Date.now()),
           updatedAt: data.updatedAt?.toMillis ? data.updatedAt.toMillis() : (data.updatedAt || Date.now()),
         };
@@ -132,7 +140,7 @@ export async function updateContactInFirestore(
 
   const contactRef = doc(db, 'users', userId, 'contacts', contactId);
   const cleanData: Record<string, any> = cleanForFirestore(data);
-  delete cleanData.id; // do not store id in doc fields
+  delete cleanData.id;
   delete cleanData.createdAt;
   cleanData.updatedAt = serverTimestamp();
 
