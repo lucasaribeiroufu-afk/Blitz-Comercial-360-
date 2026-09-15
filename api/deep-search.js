@@ -1,15 +1,18 @@
 // ============================================================
-// CÉREBRO v8: Google Places + Data Stone (limitado) + Casa dos Dados + BrasilAPI + Apify
-// Estratégia: Máximo 3 créditos Data Stone por busca, com fallback automático
+// CÉREBRO v10: Data Stone com limite FLEXÍVEL por dia
+// Dia 1 do mês: 3 créditos | Demais dias: 2 créditos
 // ============================================================
 
 const GOOGLE_MAPS_API_KEY = process.env.CHAVE_API_DO_GOOGLE_MAPS;
 const DATA_STONE_API_KEY = process.env.DATA_STONE_API_KEY;
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const CASA_DOS_DADOS_API_KEY = process.env.CASA_DOS_DADOS_API_KEY;
+const UPSTASH_URL = process.env.UPSTASH_REDIS_URL;
+const UPSTASH_TOKEN = process.env.UPSTASH_REDIS_TOKEN;
 
-// 🎯 Limite de créditos Data Stone por busca
-const DATA_STONE_MAX_LEADS = 3;
+// 🎯 Limites flexíveis
+const DATA_STONE_MAX_DAY_1 = 3;   // 1º dia útil do mês
+const DATA_STONE_MAX_OTHER = 2;   // Demais dias
 
 const CNAE_MAP = {
   'posto': '4731800', 'combustível': '4731800', 'combustivel': '4731800',
@@ -45,7 +48,89 @@ function similaridade(nome1, nome2) {
   return matches / Math.max(p1.length, p2.length);
 }
 
-// --- Data Stone (tenta buscar decisor, com tratamento de erro) ---
+// --- 🎯 Controle de créditos (Upstash) ---
+async function getPrimeiroDiaDoMes() {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return true;
+  const mes = new Date().toISOString().slice(0, 7); // YYYY-MM
+  const chave = `datastone:primeiro_dia:${mes}`;
+  try {
+    const getRes = await fetch(`${UPSTASH_URL}/get/${chave}`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+    });
+    const getData = await getRes.json();
+    return !getData.result; // Se não existe, é o primeiro dia
+  } catch {
+    return true;
+  }
+}
+
+async function marcarPrimeiroDiaUsado() {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  const mes = new Date().toISOString().slice(0, 7);
+  const chave = `datastone:primeiro_dia:${mes}`;
+  try {
+    await fetch(`${UPSTASH_URL}/set/${chave}/1`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+    });
+    // Expira em 35 dias
+    await fetch(`${UPSTASH_URL}/expire/${chave}/3024000`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+    });
+  } catch (err) {
+    console.error('Erro ao marcar primeiro dia:', err);
+  }
+}
+
+async function verificarLimiteDiario() {
+  const hoje = new Date().toISOString().split('T')[0];
+  const chave = `datastone:${hoje}`;
+  const ehPrimeiroDia = await getPrimeiroDiaDoMes();
+  const limite = ehPrimeiroDia ? DATA_STONE_MAX_DAY_1 : DATA_STONE_MAX_OTHER;
+
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) {
+    return { permitido: true, usado: 0, restante: limite, limite, ehPrimeiroDia };
+  }
+
+  try {
+    const getRes = await fetch(`${UPSTASH_URL}/get/${chave}`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+    });
+    const getData = await getRes.json();
+    const usado = parseInt(getData.result || '0', 10);
+
+    if (usado >= limite) {
+      console.log(`🚫 Limite diário atingido: ${usado}/${limite}`);
+      return { permitido: false, usado, restante: 0, limite, ehPrimeiroDia };
+    }
+
+    return { permitido: true, usado, restante: limite - usado, limite, ehPrimeiroDia };
+  } catch {
+    return { permitido: true, usado: 0, restante: limite, limite, ehPrimeiroDia };
+  }
+}
+
+async function incrementarContadorDiario() {
+  if (!UPSTASH_URL || !UPSTASH_TOKEN) return;
+  const hoje = new Date().toISOString().split('T')[0];
+  const chave = `datastone:${hoje}`;
+  try {
+    await fetch(`${UPSTASH_URL}/incr/${chave}`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+    });
+    await fetch(`${UPSTASH_URL}/expire/${chave}/172800`, {
+      headers: { Authorization: `Bearer ${UPSTASH_TOKEN}` }
+    });
+    // Se é o primeiro dia, marca como usado
+    const ehPrimeiroDia = await getPrimeiroDiaDoMes();
+    if (ehPrimeiroDia) {
+      await marcarPrimeiroDiaUsado();
+    }
+  } catch (err) {
+    console.error('Erro ao incrementar:', err);
+  }
+}
+
+// --- Data Stone ---
 async function buscarDecisorDataStone(cnpj) {
   if (!DATA_STONE_API_KEY) return null;
   try {
@@ -65,7 +150,7 @@ async function buscarDecisorDataStone(cnpj) {
     });
 
     if (!buscaResponse.ok) {
-      console.warn('Data Stone busca falhou:', buscaResponse.status);
+      console.warn('Data Stone falhou:', buscaResponse.status);
       return null;
     }
     const buscaData = await buscaResponse.json();
@@ -98,7 +183,7 @@ async function buscarDecisorDataStone(cnpj) {
       fonte: 'Data Stone'
     };
   } catch (err) {
-    console.warn('Erro Data Stone (usando fallback):', err.message);
+    console.warn('Erro Data Stone:', err.message);
     return null;
   }
 }
@@ -202,7 +287,7 @@ async function buscarGooglePlaces(query, location, count) {
   return data.places || [];
 }
 
-// --- Handler Principal ---
+// --- Handler ---
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -217,6 +302,9 @@ export default async function handler(req, res) {
   if (!GOOGLE_MAPS_API_KEY) return res.status(500).json({ error: 'Google Maps API Key ausente.' });
 
   try {
+    const statusLimite = await verificarLimiteDiario();
+    console.log(`📊 Data Stone hoje: ${statusLimite.usado}/${statusLimite.limite} (${statusLimite.ehPrimeiroDia ? '1º dia' : 'dia normal'})`);
+
     const places = await buscarGooglePlaces(query, location, count);
 
     const locMatch = (location || '').match(/([^,]+?)[\s,-]*([A-Z]{2})\s*$/);
@@ -237,9 +325,8 @@ export default async function handler(req, res) {
     }
 
     const empresasCasaDados = await buscarEmpresasCasaDados(cnae, municipio, uf);
-    console.log(`Casa dos Dados: ${empresasCasaDados.length} empresas em ${municipio}/${uf}`);
+    console.log(`Casa dos Dados: ${empresasCasaDados.length} empresas`);
 
-    // 🔑 PRIMEIRO PASS: montar leads base com CNPJ + score (sem chamar Data Stone)
     const leadsBase = places.map((place) => {
       const nomeGoogle = place.displayName?.text || '';
       let melhorMatch = null;
@@ -259,33 +346,25 @@ export default async function handler(req, res) {
       return { place, nomeGoogle, melhorMatch, melhorScore, cnpj, socios };
     });
 
-    // 🔑 ORDENAR por match_score (melhores correspondências primeiro)
     leadsBase.sort((a, b) => b.melhorScore - a.melhorScore);
 
-    // 🔑 SEGUNDO PASS: chamar Data Stone APENAS para os top N leads com CNPJ
-    let creditosDataStoneUsados = 0;
-    const leadsFinais = await Promise.all(leadsBase.map(async (lb, idx) => {
+    let creditosUsadosAgora = 0;
+    const leadsFinais = await Promise.all(leadsBase.map(async (lb) => {
       let dadosDecisor = null;
       let telefoneReceita = null;
-
       const temCnpj = !!lb.cnpj;
-      const dentroDoLimite = idx < DATA_STONE_MAX_LEADS;
 
-      // 1. Data Stone (apenas top N)
-      if (temCnpj && dentroDoLimite && creditosDataStoneUsados < DATA_STONE_MAX_LEADS) {
+      if (temCnpj && statusLimite.permitido && creditosUsadosAgora < statusLimite.restante) {
         dadosDecisor = await buscarDecisorDataStone(lb.cnpj);
         if (dadosDecisor) {
-          creditosDataStoneUsados++;
-          console.log(`💎 Data Stone usado para ${lb.nomeGoogle} (${creditosDataStoneUsados}/${DATA_STONE_MAX_LEADS})`);
+          creditosUsadosAgora++;
+          await incrementarContadorDiario();
+          console.log(`💎 Data Stone: ${lb.nomeGoogle} (${statusLimite.usado + creditosUsadosAgora}/${statusLimite.limite})`);
         }
       }
 
-      // 2. BrasilAPI (fallback ou complemento)
-      if (temCnpj) {
-        telefoneReceita = await buscarTelefoneBrasilAPI(lb.cnpj);
-      }
+      if (temCnpj) telefoneReceita = await buscarTelefoneBrasilAPI(lb.cnpj);
 
-      // 3. Coletar telefones para validação WhatsApp
       const telefonesParaValidar = [];
       if (dadosDecisor?.telefone) telefonesParaValidar.push(dadosDecisor.telefone);
       if (telefoneReceita) telefonesParaValidar.push(telefoneReceita);
@@ -298,7 +377,6 @@ export default async function handler(req, res) {
       const numeroFormatado = (numeroLimpo.length === 10 || numeroLimpo.length === 11) ? '55' + numeroLimpo : numeroLimpo;
       const temWhatsapp = mapaWhatsApp[numeroFormatado] === true ? true : (mapaWhatsApp[numeroFormatado] === false ? false : null);
 
-      // Decisor final: Data Stone > 1º Sócio > Genérico
       const decisorFinal = dadosDecisor || (lb.socios[0] ? {
         nome: lb.socios[0].nome,
         cargo: lb.socios[0].qualificacao,
@@ -334,24 +412,25 @@ export default async function handler(req, res) {
       };
     }));
 
-    // Reordenar por confidence
     leadsFinais.sort((a, b) => (b.confidence || 0) - (a.confidence || 0));
 
     const comWhats = leadsFinais.filter(l => l.tem_whatsapp === true).length;
     const comCnpj = leadsFinais.filter(l => l.cnpj).length;
     const comDecisor = leadsFinais.filter(l => l.decisor).length;
-
-    console.log(`✅ Busca finalizada: ${leadsFinais.length} leads, ${comCnpj} com CNPJ, ${comDecisor} com decisor, ${comWhats} com WhatsApp. Créditos Data Stone usados: ${creditosDataStoneUsados}`);
+    const usadosHoje = statusLimite.usado + creditosUsadosAgora;
 
     res.status(200).json({
       leads: leadsFinais,
       meta: {
         intent: 'google_places_enriched',
-        summary: `${leadsFinais.length} resultados. ${comCnpj} com CNPJ. ${comDecisor} com decisor. ${comWhats} com WhatsApp ativo. (Data Stone: ${creditosDataStoneUsados} créditos usados)`,
+        summary: `${leadsFinais.length} resultados. ${comCnpj} com CNPJ. ${comDecisor} com decisor. ${comWhats} com WhatsApp. (Data Stone hoje: ${usadosHoje}/${statusLimite.limite})`,
         targetAudience: 'Empresas locais e decisores comerciais',
         trendingItems: [],
-        suggestedPitch: `Abordar os decisores locais com ofertas relevantes para o setor de ${query}.`,
-        creditos_data_stone_usados: creditosDataStoneUsados
+        suggestedPitch: `Abordar os decisores locais com ofertas para ${query}.`,
+        data_stone_usado_hoje: usadosHoje,
+        data_stone_limite_hoje: statusLimite.limite,
+        data_stone_restante_hoje: Math.max(0, statusLimite.limite - usadosHoje),
+        primeiro_dia_do_mes: statusLimite.ehPrimeiroDia
       }
     });
 
