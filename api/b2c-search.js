@@ -73,7 +73,10 @@ async function buscarSerper(query, location) {
   }
 
   try {
-    const q = location ? `${query} comprar ${location}` : `${query} comprar`;
+// Query focada em INTENÇÃO DE COMPRA (compradores, não vendedores)
+const q = location 
+  ? `"quero comprar" OR "onde compro" OR "procuro" OR "indicação" "${query}" ${location}`
+  : `"quero comprar" OR "onde compro" OR "procuro" OR "indicação" "${query}"`;
     console.log(`🔍 Serper query: "${q}"`);
 
     const response = await fetch('https://google.serper.dev/search', {
