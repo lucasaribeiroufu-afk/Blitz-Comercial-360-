@@ -74,6 +74,9 @@ export function ContactCard({
   const hasDistinctPhones = Boolean(decisionMakerPhone && establishmentPhone && decisionMakerPhone !== establishmentPhone);
   const timing = getOptimalContactTiming(contact.category, contact.entityType);
 
+  // 🆕 Indicador de WhatsApp vindo da API (Apify)
+  const temWhatsapp = (contact as any).tem_whatsapp;
+
   const handleCopyPhone = () => {
     navigator.clipboard.writeText(contact.phone);
     setCopiedPhone(true);
@@ -448,16 +451,43 @@ export function ContactCard({
         {hasDistinctPhones ? (
           <div className="mt-2.5 space-y-2">
             {/* Number 1: Decision Maker / Buyer / Partner WhatsApp */}
-            <div className="rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-2.5 flex items-center justify-between gap-2">
+            <div className={`rounded-lg border p-2.5 flex items-center justify-between gap-2 ${
+              temWhatsapp === true
+                ? 'border-emerald-500/50 bg-emerald-950/30'
+                : temWhatsapp === false
+                  ? 'border-zinc-700/60 bg-zinc-900/40'
+                  : 'border-emerald-500/30 bg-emerald-950/20'
+            }`}>
               <div className="flex items-center gap-2 min-w-0">
-                <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-emerald-500/10 text-emerald-400">
+                <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${
+                  temWhatsapp === true
+                    ? 'bg-emerald-500/20 text-emerald-300'
+                    : temWhatsapp === false
+                      ? 'bg-zinc-700/40 text-zinc-500'
+                      : 'bg-emerald-500/10 text-emerald-400'
+                }`}>
                   <MessageSquare className="h-3.5 w-3.5" />
                 </div>
                 <div className="min-w-0">
-                  <span className="block text-[9px] uppercase font-bold text-emerald-400 truncate">
-                    WhatsApp Direto ({contact.decisionMaker || 'Gerente de Compras & Suprimentos / Sócio'})
-                  </span>
-                  <span className="font-mono text-sm font-bold text-emerald-300 truncate block">
+                  <div className="flex items-center gap-1.5 flex-wrap">
+                    <span className="block text-[9px] uppercase font-bold text-emerald-400 truncate">
+                      WhatsApp Direto ({contact.decisionMaker || 'Gerente de Compras & Suprimentos / Sócio'})
+                    </span>
+                    {temWhatsapp === true && (
+                      <span className="inline-flex items-center gap-1 rounded bg-emerald-500/25 border border-emerald-400/60 px-1.5 py-0.2 text-[8px] font-bold text-emerald-200 shadow-sm shadow-emerald-500/20">
+                        <Check className="h-2.5 w-2.5 text-emerald-300" />
+                        ATIVO
+                      </span>
+                    )}
+                    {temWhatsapp === false && (
+                      <span className="inline-flex items-center gap-1 rounded bg-zinc-700/40 border border-zinc-600/60 px-1.5 py-0.2 text-[8px] font-bold text-zinc-400">
+                        SEM WHATSAPP
+                      </span>
+                    )}
+                  </div>
+                  <span className={`font-mono text-sm font-bold truncate block ${
+                    temWhatsapp === true ? 'text-emerald-300' : temWhatsapp === false ? 'text-zinc-400' : 'text-emerald-300'
+                  }`}>
                     {decisionMakerPhone}
                   </span>
                 </div>
@@ -468,8 +498,12 @@ export function ContactCard({
                   href={`https://wa.me/${cleanDecision}`}
                   target="_blank"
                   rel="noreferrer"
-                  className="rounded bg-emerald-600 hover:bg-emerald-500 px-2 py-1 text-[11px] font-semibold text-white transition flex items-center gap-1 shadow-sm"
-                  title="Abrir WhatsApp direto do Decisor"
+                  className={`rounded px-2 py-1 text-[11px] font-semibold text-white transition flex items-center gap-1 shadow-sm ${
+                    temWhatsapp === false
+                      ? 'bg-zinc-700 hover:bg-zinc-600'
+                      : 'bg-emerald-600 hover:bg-emerald-500'
+                  }`}
+                  title={temWhatsapp === false ? 'Número sem WhatsApp - tentar mesmo assim' : 'Abrir WhatsApp direto do Decisor'}
                 >
                   <MessageSquare className="h-3 w-3" />
                   <span>Zap</span>
@@ -540,14 +574,41 @@ export function ContactCard({
             </div>
           </div>
         ) : (
-          <div className="mt-3 rounded-lg border border-emerald-500/30 bg-emerald-950/20 p-3 flex items-center justify-between gap-2">
+          <div className={`mt-3 rounded-lg border p-3 flex items-center justify-between gap-2 ${
+            temWhatsapp === true
+              ? 'border-emerald-500/50 bg-emerald-950/30'
+              : temWhatsapp === false
+                ? 'border-zinc-700/60 bg-zinc-900/40'
+                : 'border-emerald-500/30 bg-emerald-950/20'
+          }`}>
             <div className="flex items-center gap-2 min-w-0">
-              <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded bg-emerald-500/10 text-emerald-400">
+              <div className={`flex h-7 w-7 shrink-0 items-center justify-center rounded ${
+                temWhatsapp === true
+                  ? 'bg-emerald-500/20 text-emerald-300'
+                  : temWhatsapp === false
+                    ? 'bg-zinc-700/40 text-zinc-500'
+                    : 'bg-emerald-500/10 text-emerald-400'
+              }`}>
                 <Phone className="h-3.5 w-3.5" />
               </div>
-              <div>
-                <span className="block text-[10px] uppercase font-bold text-emerald-500">Telefone / WhatsApp</span>
-                <span className="font-mono text-sm font-bold text-emerald-300 truncate">
+              <div className="min-w-0">
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <span className="block text-[10px] uppercase font-bold text-emerald-500">Telefone / WhatsApp</span>
+                  {temWhatsapp === true && (
+                    <span className="inline-flex items-center gap-1 rounded bg-emerald-500/25 border border-emerald-400/60 px-1.5 py-0.2 text-[8px] font-bold text-emerald-200 shadow-sm shadow-emerald-500/20">
+                      <Check className="h-2.5 w-2.5 text-emerald-300" />
+                      ATIVO
+                    </span>
+                  )}
+                  {temWhatsapp === false && (
+                    <span className="inline-flex items-center gap-1 rounded bg-zinc-700/40 border border-zinc-600/60 px-1.5 py-0.2 text-[8px] font-bold text-zinc-400">
+                      SEM WHATSAPP
+                    </span>
+                  )}
+                </div>
+                <span className={`font-mono text-sm font-bold truncate ${
+                  temWhatsapp === true ? 'text-emerald-300' : temWhatsapp === false ? 'text-zinc-400' : 'text-emerald-300'
+                }`}>
                   {contact.phone}
                 </span>
               </div>
