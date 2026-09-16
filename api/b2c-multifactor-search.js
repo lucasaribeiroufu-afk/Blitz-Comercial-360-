@@ -190,22 +190,26 @@ async function buscarFacebookGroups(query, location, nacional = false) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         keywords: keywords,
-        country: 'br',
+        countryCode: 'br',
        maxPosts: 100,               // 100 por keyword = ~330 max total 
         afterDate: 'last_month'
       })
     });
 
     if (!response.ok) {
-      console.error('Apify Facebook erro:', response.status);
+      const errText = await response.text();
+      console.error('Apify Facebook erro:', response.status, errText);
       return [];
-    }
+    } 
 
     const data = await response.json();
     const posts = Array.isArray(data) ? data : [];
 
-    console.log(`📥 Facebook Groups: ${posts.length} posts brutos`);
-
+console.log(`📥 Facebook Groups: ${posts.length} posts brutos`);
+    if (posts.length === 0) {
+      console.log('⚠️ Apify retornou 0 posts. Payload enviado:', JSON.stringify({keywords: keywords.slice(0, 3), countryCode: 'br', maxPosts: 100}));
+    }
+    
     // Filtro: só posts com intenção de compra
     const keywordsNorm = KEYWORDS_COMPRA.map(normalizar);
 
