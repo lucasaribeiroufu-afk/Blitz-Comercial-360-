@@ -163,7 +163,7 @@ function gerarKeywordsComprador(input) {
   }
 
   // Retorna 18-22 keywords otimizadas
-  return Array.from(keywords).slice(0, 22);
+  return Array.from(keywords).slice(0, 8);
 }
 
 // ============================================================
@@ -190,8 +190,8 @@ async function buscarFacebookGroups(query, location, nacional = false) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         keywords: keywords,
-        countryCode: 'br',
-       maxPosts: 15,               // 15 por keyword = ~330 max total 
+        country: 'br',
+       maxPosts: 100,               // 100 por keyword = ~330 max total 
         afterDate: 'last_month'
       })
     });
