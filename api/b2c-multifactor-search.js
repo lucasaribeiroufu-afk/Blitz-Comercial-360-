@@ -370,10 +370,27 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const body = req.body || {};
-  const query = body.query;
+  // 🎯 Parser manual robusto (Vercel às vezes entrega como string)
+  let body = req.body;
+  
+  if (typeof body === 'string') {
+    try {
+      body = JSON.parse(body);
+    } catch (e) {
+      console.error('Erro parse body string:', e.message, 'Body recebido:', body.slice(0, 200));
+      body = {};
+    }
+  }
+  
+  if (!body || typeof body !== 'object') {
+    body = {};
+  }
+
+  const query = body.query || '';
   const location = body.location || '';
   const count = body.count || 20;
+
+  console.log('Body recebido:', JSON.stringify(body));
 
   if (!query) return res.status(400).json({ error: 'Forneca o que deseja rastrear.' });
 
