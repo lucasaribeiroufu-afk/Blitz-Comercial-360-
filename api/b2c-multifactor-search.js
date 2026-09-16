@@ -1,7 +1,8 @@
 // ============================================================
-// CÉREBRO B2C v9: Radar de Intenção de Compra MULTI-NICHO
+// CÉREBRO B2C v10: Radar de Intenção de Compra MULTI-NICHO
 // Estratégia: Regional primeiro → Fallback Nacional automático
 // Extrai: Nome do comprador + Telefone (do texto do post)
+// Keywords: GERADOR INTELIGENTE (15-22 variações automáticas)
 // ============================================================
 
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
@@ -10,12 +11,13 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
 const ACTOR_ID = 'lofomachines~facebook-groups-posts-search-scraper';
 
-// Palavras-chave universais de intenção de compra
+// Palavras-chave universais que indicam intenção de compra
 const KEYWORDS_COMPRA = [
   'quero comprar', 'onde compro', 'onde encontro', 'procuro',
   'procurando', 'preciso de', 'indicação', 'indica',
   'alguém indica', 'me indica', 'estou buscando', 'quero adquirir',
-  'qual melhor', 'me ajudem a encontrar', 'estou procurando'
+  'qual melhor', 'me ajudem a encontrar', 'estou procurando',
+  'comprar', 'compro', 'a venda', 'venda'
 ];
 
 function normalizar(s) {
@@ -24,21 +26,20 @@ function normalizar(s) {
     .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// 🎯 Extrair telefone brasileiro de um texto (posts de compradores geralmente têm o número)
+// ============================================================
+// 📞 EXTRAIR TELEFONE BRASILEIRO DE UM TEXTO
+// ============================================================
 function extrairTelefone(texto) {
   if (!texto) return null;
   
-  // Padrões brasileiros: (XX) 9XXXX-XXXX, (XX) XXXX-XXXX, XX 9XXXX-XXXX, etc
   const regex = /(?:\(?([1-9]{2})\)?\s*)?(9?\d{4})[-\s]?(\d{4})/g;
   const matches = texto.match(regex);
   if (!matches) return null;
 
   for (const m of matches) {
     const digits = m.replace(/\D/g, '');
-    // Valida: 10 ou 11 dígitos (DDD + número)
     if (digits.length >= 10 && digits.length <= 11) {
       const ddd = digits.slice(0, 2);
-      // Valida DDD brasileiro (11-99)
       if (parseInt(ddd) >= 11 && parseInt(ddd) <= 99) {
         const numero = digits.slice(2);
         if (numero.length === 9) {
@@ -53,6 +54,119 @@ function extrairTelefone(texto) {
 }
 
 // ============================================================
+// 🧠 GERADOR INTELIGENTE DE KEYWORDS (Multi-nicho)
+// Transforma "Comprador de balança para pesagem de gado" em 15-22 variações
+// ============================================================
+function gerarKeywordsComprador(input) {
+  // 1. Limpar prefixos de intenção do input
+  const prefixos = [
+    'comprador de', 'comprador', 'cliente que quer', 'cliente',
+    'pessoa que quer', 'interessado em', 'quero comprar', 'quero',
+    'preciso de', 'preciso', 'procuro por', 'procuro', 'busco',
+    'vendedor de', 'vendedor'
+  ];
+  
+  let produtoCore = input.toLowerCase().trim();
+  for (const p of prefixos) {
+    if (produtoCore.startsWith(p + ' ')) {
+      produtoCore = produtoCore.replace(p + ' ', '').trim();
+      break;
+    }
+  }
+
+  // 2. Extrair palavras principais
+  const palavras = produtoCore
+    .split(/\s+/)
+    .filter(w => w.length > 2 && !['para', 'com', 'dos', 'das', 'de', 'da', 'do', 'em'].includes(w));
+
+  const versaoCurta = palavras.slice(0, 2).join(' ');
+  const versaoMedia = palavras.slice(0, 3).join(' ');
+  const versaoLonga = palavras.slice(0, 4).join(' ');
+
+  // 3. Base de sinônimos + variações
+  const produtos = new Set([versaoCurta, versaoMedia, versaoLonga, produtoCore]);
+  
+  // Variação sem acentos
+  const semAcento = produtoCore.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  produtos.add(semAcento);
+
+  // 4. Sinônimos por categoria
+  const mapaCategorias = {
+    'balanca': ['balanca', 'balança', 'balanca de pesagem', 'balanca eletronica', 'balanca digital'],
+    'gado': ['gado', 'bovino', 'boi', 'rebanho', 'pecuaria', 'criacao de gado'],
+    'pesagem': ['pesagem', 'pesar', 'peso', 'balanca de pesar'],
+    'trator': ['trator', 'maquinario agricola', 'maquina agricola', 'implemento'],
+    'vestido': ['vestido', 'vestidos', 'peca de roupa', 'roupa feminina'],
+    'moda': ['moda', 'roupa', 'vestimenta', 'peca', 'look', 'conjunto'],
+    'achadinhos': ['achadinhos', 'utilidades', 'casa', 'organizacao', 'cozinha'],
+    'ventilador': ['ventilador', 'climatizador', 'ventilador de teto'],
+    'iphone': ['iphone', 'celular apple', 'smartphone', 'celular'],
+    'freezer': ['freezer', 'congelador', 'geladeira', 'refrigerador'],
+    'celular': ['celular', 'smartphone', 'telefone movel'],
+    'bicicleta': ['bicicleta', 'bike', 'bicicleta aro'],
+    'carro': ['carro', 'veiculo', 'automovel', 'caminhonete'],
+    'peca': ['peca', 'componente', 'acessorio'],
+    'racao': ['racao', 'alimento animal', 'suplemento']
+  };
+
+  for (const [chave, alts] of Object.entries(mapaCategorias)) {
+    if (produtoCore.includes(chave)) {
+      for (const alt of alts) {
+        // Substitui no produto core
+        const variacao = produtoCore.replace(chave, alt);
+        produtos.add(variacao);
+        // Combina com versão curta
+        if (palavras.length >= 2) {
+          const variacaoCurta = palavras.slice(0, 2).map(w => 
+            w === chave ? alt : w
+          ).join(' ');
+          produtos.add(variacaoCurta);
+        }
+      }
+    }
+  }
+
+  // 5. Verbos de intenção de compra (universais)
+  const verbos = [
+    'quero comprar',
+    'preciso comprar',
+    'procuro',
+    'estou procurando',
+    'estou buscando',
+    'onde compro',
+    'onde encontro',
+    'comprar',
+    'compro',
+    'busco',
+    'indicação de',
+    'quero adquirir'
+  ];
+
+  // 6. Combinar verbos + produtos (limitado para não explodir)
+  const keywords = new Set();
+  const produtosArray = Array.from(produtos).slice(0, 5); // máximo 5 produtos
+  
+  for (const verbo of verbos) {
+    for (const produto of produtosArray) {
+      const kw = `${verbo} ${produto}`.trim();
+      if (kw.split(' ').length <= 6) {
+        keywords.add(kw);
+      }
+    }
+  }
+
+  // 7. Variações "produto + ação"
+  for (const produto of produtosArray.slice(0, 4)) {
+    keywords.add(`${produto} comprar`);
+    keywords.add(`${produto} a venda`);
+    keywords.add(`${produto} indicação`);
+  }
+
+  // Retorna 18-22 keywords otimizadas
+  return Array.from(keywords).slice(0, 22);
+}
+
+// ============================================================
 // FONTE 1: APIFY - Facebook Groups (Regional → Nacional)
 // ============================================================
 async function buscarFacebookGroups(query, location, nacional = false) {
@@ -62,19 +176,12 @@ async function buscarFacebookGroups(query, location, nacional = false) {
   }
 
   try {
-    // Keywords SIMPLES (frases curtas que as pessoas realmente escrevem)
-    const keywords = [
-      `${query} comprar`,
-      `comprar ${query}`,
-      `${query} indicação`,
-      `onde comprar ${query}`,
-      `quero ${query}`,
-      `preciso ${query}`,
-      `${query} à venda`
-    ];
-
+    // 🧠 GERAR KEYWORDS INTELIGENTES a partir do input
+    const keywords = gerarKeywordsComprador(query);
     const modoBusca = nacional ? 'NACIONAL' : (location || 'BRASIL');
+    
     console.log(`🔍 Facebook Groups (${modoBusca}): "${query}"`);
+    console.log(`📋 ${keywords.length} keywords: ${keywords.slice(0, 4).join(' | ')}...`);
 
     const url = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`;
 
@@ -84,7 +191,7 @@ async function buscarFacebookGroups(query, location, nacional = false) {
       body: JSON.stringify({
         keywords: keywords,
         countryCode: 'br',
-        maxPosts: 100,
+        maxPosts: 30,               // 30 por keyword = ~600 max total
         afterDate: 'last_month'
       })
     });
@@ -111,12 +218,10 @@ async function buscarFacebookGroups(query, location, nacional = false) {
         const textoPost = post.text || post.message || post.postText || '';
         const textoNorm = normalizar(textoPost);
         
-        // Se busca regional: prioriza posts que mencionam a cidade
         const mencionaLocal = !nacional && location
           ? textoNorm.includes(normalizar(location.split(',')[0]))
           : false;
 
-        // Extrai telefone do próprio texto do post
         const telefone = extrairTelefone(textoPost);
 
         return {
@@ -137,7 +242,7 @@ async function buscarFacebookGroups(query, location, nacional = false) {
       })
       .filter(p => p.sourceUrl && p.sourceUrl.startsWith('http'));
 
-    // Se regional, filtra apenas os da cidade (mas mantém todos se vazio)
+    // Se regional, prioriza os da cidade
     if (!nacional && location) {
       const regionais = filtrados.filter(p => p.score === 98);
       console.log(`✅ Facebook Groups: ${regionais.length} regionais / ${filtrados.length} total`);
@@ -333,7 +438,6 @@ export default async function handler(req, res) {
       const todosNacional = [...fbNacional, ...geminiNacional, ...serperNacional];
       console.log(`📊 Nacional: ${todosNacional.length} leads encontrados`);
 
-      // Se já tinha alguns regionais, mantém eles no topo + adiciona nacionais
       if (todos.length > 0) {
         todos = [...todos, ...todosNacional];
         modoUsado = 'regional + nacional';
@@ -355,8 +459,6 @@ export default async function handler(req, res) {
     unicos.sort((a, b) => (b.score || 0) - (a.score || 0));
 
     const resultados = unicos.slice(0, count);
-
-    // Contar quantos têm telefone
     const comTelefone = resultados.filter(r => r.phone).length;
 
     const fontes = {
