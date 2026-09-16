@@ -149,12 +149,31 @@ async function buscarFacebookGroups(query, location, nacional) {
     const posts = Array.isArray(data) ? data : [];
     console.log('Facebook Groups: ' + posts.length + ' posts brutos');
 
-    const keywordsNorm = KEYWORDS_COMPRA.map(normalizar);
+   const keywordsNorm = KEYWORDS_COMPRA.map(normalizar);
+
+    // 🎯 Extrai palavras-chave da query para filtrar posts ESPECÍFICOS
+    const termosQuery = normalizar(query)
+      .split(' ')
+      .filter(function(w) { 
+        return w.length > 3 && 
+               ['para', 'com', 'dos', 'das', 'de', 'da', 'do', 'em', 'comprador', 'pesagem'].indexOf(w) === -1; 
+      });
+
+    console.log('Termos especificos da query:', termosQuery.join(', '));
 
     const filtrados = posts
       .filter(function(post) {
         const texto = normalizar(post.text || post.message || post.postText || '');
-        return keywordsNorm.some(function(k) { return texto.indexOf(k) !== -1; });
+        
+        // 1. Precisa ter palavra de intencao de compra
+        const temIntencao = keywordsNorm.some(function(k) { return texto.indexOf(k) !== -1; });
+        if (!temIntencao) return false;
+        
+        // 2. Precisa ter pelo menos 1 termo da query (ex: "balanca" ou "gado")
+        const temTermoQuery = termosQuery.some(function(t) { return texto.indexOf(t) !== -1; });
+        if (!temTermoQuery) return false;
+        
+        return true;
       })
       .map(function(post) {
         const textoPost = post.text || post.message || post.postText || '';
