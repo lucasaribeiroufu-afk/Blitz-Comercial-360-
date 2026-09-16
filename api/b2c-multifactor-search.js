@@ -1,23 +1,46 @@
 // ============================================================
-// CÉREBRO B2C v10: Radar de Intenção de Compra MULTI-NICHO
-// Estratégia: Regional primeiro → Fallback Nacional automático
-// Extrai: Nome do comprador + Telefone (do texto do post)
-// Keywords: GERADOR INTELIGENTE (15-22 variações automáticas)
+// CEREBRO B2C v12: Radar de Intencao de Compra MULTI-NICHO
+// Fontes: Apify (Facebook Groups OFICIAL) + Serper + Gemini
+// 11 grupos de agro cadastrados (~231 mil pessoas)
 // ============================================================
 
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-const ACTOR_ID = 'lofomachines~facebook-groups-posts-search-scraper';
+// Ator OFICIAL da Apify (rating 4.9, 41K usuarios, estavel)
+const ACTOR_ID = 'apify~facebook-groups-scraper';
 
-// Palavras-chave universais que indicam intenção de compra
+// ============================================================
+// GRUPOS CADASTRADOS POR NICHO
+// ============================================================
+const GRUPOS_POR_NICHO = {
+  agro: [
+    { url: 'https://www.facebook.com/groups/1452587048167923/', nome: 'Pecuaria Brasil Oficial (49,7k)' },
+    { url: 'https://www.facebook.com/groups/241762439745748/', nome: 'Gir Leiteiro Tesouro Brasileiro (40,7k)' },
+    { url: 'https://www.facebook.com/groups/709798043065462/', nome: 'Os Menino da Pecuaria (29,3k)' },
+    { url: 'https://www.facebook.com/groups/agropecuaria.grupo', nome: 'Agropecuaria (27,4k)' },
+    { url: 'https://www.facebook.com/groups/1819571738357642/', nome: 'Agricultura e Pecuaria (24,5k)' },
+    { url: 'https://www.facebook.com/groups/566066187358045/', nome: 'Pecuaria Forte Brasil (20k)' },
+    { url: 'https://www.facebook.com/groups/207727399758306/', nome: 'Pecuaria no Brasil (12,4k)' },
+    { url: 'https://www.facebook.com/groups/1993576477637899/', nome: 'O Melhor da Pecuaria Brasil (10,8k)' },
+    { url: 'https://www.facebook.com/groups/2253608394913290/', nome: 'Pecuaria Leiteira e Corte Brasil (10k)' },
+    { url: 'https://www.facebook.com/groups/1783696828448935/', nome: 'PECUARISTAS BRASIL (4,5k)' },
+    { url: 'https://www.facebook.com/groups/122164784542624/', nome: 'pecuaria e pecuaristas (2,7k)' },
+  ],
+  casa: [],
+  moda: [],
+  agricola: [],
+  eletronicos: []
+};
+
+// Palavras-chave universais de intencao de compra
 const KEYWORDS_COMPRA = [
   'quero comprar', 'onde compro', 'onde encontro', 'procuro',
-  'procurando', 'preciso de', 'indicação', 'indica',
-  'alguém indica', 'me indica', 'estou buscando', 'quero adquirir',
+  'procurando', 'preciso de', 'indicacao', 'indica',
+  'alguem indica', 'me indica', 'estou buscando', 'quero adquirir',
   'qual melhor', 'me ajudem a encontrar', 'estou procurando',
-  'comprar', 'compro', 'a venda', 'venda'
+  'comprar', 'compro', 'a venda', 'venda', 'valor', 'preco'
 ];
 
 function normalizar(s) {
@@ -26,12 +49,9 @@ function normalizar(s) {
     .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// ============================================================
-// 📞 EXTRAIR TELEFONE BRASILEIRO DE UM TEXTO
-// ============================================================
+// Extrai telefone brasileiro do texto
 function extrairTelefone(texto) {
   if (!texto) return null;
-  
   const regex = /(?:\(?([1-9]{2})\)?\s*)?(9?\d{4})[-\s]?(\d{4})/g;
   const matches = texto.match(regex);
   if (!matches) return null;
@@ -43,9 +63,9 @@ function extrairTelefone(texto) {
       if (parseInt(ddd) >= 11 && parseInt(ddd) <= 99) {
         const numero = digits.slice(2);
         if (numero.length === 9) {
-          return `(${ddd}) ${numero.slice(0, 5)}-${numero.slice(5)}`;
+          return '(' + ddd + ') ' + numero.slice(0, 5) + '-' + numero.slice(5);
         } else if (numero.length === 8) {
-          return `(${ddd}) ${numero.slice(0, 4)}-${numero.slice(4)}`;
+          return '(' + ddd + ') ' + numero.slice(0, 4) + '-' + numero.slice(4);
         }
       }
     }
@@ -53,247 +73,184 @@ function extrairTelefone(texto) {
   return null;
 }
 
-// ============================================================
-// 🧠 GERADOR INTELIGENTE DE KEYWORDS (Multi-nicho)
-// Transforma "Comprador de balança para pesagem de gado" em 15-22 variações
-// ============================================================
-function gerarKeywordsComprador(input) {
-  // 1. Limpar prefixos de intenção do input
-  const prefixos = [
-    'comprador de', 'comprador', 'cliente que quer', 'cliente',
-    'pessoa que quer', 'interessado em', 'quero comprar', 'quero',
-    'preciso de', 'preciso', 'procuro por', 'procuro', 'busco',
-    'vendedor de', 'vendedor'
-  ];
+// Detecta o nicho pela query
+function detectarNicho(query) {
+  const q = normalizar(query);
   
-  let produtoCore = input.toLowerCase().trim();
-  for (const p of prefixos) {
-    if (produtoCore.startsWith(p + ' ')) {
-      produtoCore = produtoCore.replace(p + ' ', '').trim();
-      break;
-    }
+  if (q.indexOf('gado') !== -1 || q.indexOf('balanca') !== -1 || 
+      q.indexOf('bovino') !== -1 || q.indexOf('pecuar') !== -1 ||
+      q.indexOf('racao') !== -1 || q.indexOf('fazenda') !== -1 ||
+      q.indexOf('boi') !== -1 || q.indexOf('vaca') !== -1 ||
+      q.indexOf('leite') !== -1 || q.indexOf('corte') !== -1) {
+    return 'agro';
   }
-
-  // 2. Extrair palavras principais
-  const palavras = produtoCore
-    .split(/\s+/)
-    .filter(w => w.length > 2 && !['para', 'com', 'dos', 'das', 'de', 'da', 'do', 'em'].includes(w));
-
-  const versaoCurta = palavras.slice(0, 2).join(' ');
-  const versaoMedia = palavras.slice(0, 3).join(' ');
-  const versaoLonga = palavras.slice(0, 4).join(' ');
-
-  // 3. Base de sinônimos + variações
-  const produtos = new Set([versaoCurta, versaoMedia, versaoLonga, produtoCore]);
+  if (q.indexOf('casa') !== -1 || q.indexOf('achadinho') !== -1 ||
+      q.indexOf('utensilio') !== -1 || q.indexOf('decoracao') !== -1) {
+    return 'casa';
+  }
+  if (q.indexOf('moda') !== -1 || q.indexOf('vestido') !== -1 ||
+      q.indexOf('roupa') !== -1 || q.indexOf('feminin') !== -1) {
+    return 'moda';
+  }
+  if (q.indexOf('fertilizante') !== -1 || q.indexOf('adubo') !== -1 ||
+      q.indexOf('defensivo') !== -1 || q.indexOf('agricola') !== -1) {
+    return 'agricola';
+  }
+  if (q.indexOf('eletron') !== -1 || q.indexOf('celular') !== -1 ||
+      q.indexOf('iphone') !== -1 || q.indexOf('ventilador') !== -1) {
+    return 'eletronicos';
+  }
   
-  // Variação sem acentos
-  const semAcento = produtoCore.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  produtos.add(semAcento);
-
-  // 4. Sinônimos por categoria
-  const mapaCategorias = {
-    'balanca': ['balanca', 'balança', 'balanca de pesagem', 'balanca eletronica', 'balanca digital'],
-    'gado': ['gado', 'bovino', 'boi', 'rebanho', 'pecuaria', 'criacao de gado'],
-    'pesagem': ['pesagem', 'pesar', 'peso', 'balanca de pesar'],
-    'trator': ['trator', 'maquinario agricola', 'maquina agricola', 'implemento'],
-    'vestido': ['vestido', 'vestidos', 'peca de roupa', 'roupa feminina'],
-    'moda': ['moda', 'roupa', 'vestimenta', 'peca', 'look', 'conjunto'],
-    'achadinhos': ['achadinhos', 'utilidades', 'casa', 'organizacao', 'cozinha'],
-    'ventilador': ['ventilador', 'climatizador', 'ventilador de teto'],
-    'iphone': ['iphone', 'celular apple', 'smartphone', 'celular'],
-    'freezer': ['freezer', 'congelador', 'geladeira', 'refrigerador'],
-    'celular': ['celular', 'smartphone', 'telefone movel'],
-    'bicicleta': ['bicicleta', 'bike', 'bicicleta aro'],
-    'carro': ['carro', 'veiculo', 'automovel', 'caminhonete'],
-    'peca': ['peca', 'componente', 'acessorio'],
-    'racao': ['racao', 'alimento animal', 'suplemento']
-  };
-
-  for (const [chave, alts] of Object.entries(mapaCategorias)) {
-    if (produtoCore.includes(chave)) {
-      for (const alt of alts) {
-        // Substitui no produto core
-        const variacao = produtoCore.replace(chave, alt);
-        produtos.add(variacao);
-        // Combina com versão curta
-        if (palavras.length >= 2) {
-          const variacaoCurta = palavras.slice(0, 2).map(w => 
-            w === chave ? alt : w
-          ).join(' ');
-          produtos.add(variacaoCurta);
-        }
-      }
-    }
-  }
-
-  // 5. Verbos de intenção de compra (universais)
-  const verbos = [
-    'quero comprar',
-    'preciso comprar',
-    'procuro',
-    'estou procurando',
-    'estou buscando',
-    'onde compro',
-    'onde encontro',
-    'comprar',
-    'compro',
-    'busco',
-    'indicação de',
-    'quero adquirir'
-  ];
-
-  // 6. Combinar verbos + produtos (limitado para não explodir)
-  const keywords = new Set();
-  const produtosArray = Array.from(produtos).slice(0, 5); // máximo 5 produtos
-  
-  for (const verbo of verbos) {
-    for (const produto of produtosArray) {
-      const kw = `${verbo} ${produto}`.trim();
-      if (kw.split(' ').length <= 6) {
-        keywords.add(kw);
-      }
-    }
-  }
-
-  // 7. Variações "produto + ação"
-  for (const produto of produtosArray.slice(0, 4)) {
-    keywords.add(`${produto} comprar`);
-    keywords.add(`${produto} a venda`);
-    keywords.add(`${produto} indicação`);
-  }
-
-  // Retorna 18-22 keywords otimizadas
-  return Array.from(keywords).slice(0, 8);
+  return 'agro'; // padrao
 }
 
 // ============================================================
-// FONTE 1: APIFY - Facebook Groups (Regional → Nacional)
+// FONTE 1: APIFY - Facebook Groups (ator oficial)
 // ============================================================
-async function buscarFacebookGroups(query, location, nacional = false) {
+async function buscarFacebookGroups(query, location, nacional) {
   if (!APIFY_API_TOKEN) {
-    console.warn('⚠️ Apify: token não configurado');
+    console.warn('Apify: token nao configurado');
     return [];
   }
 
   try {
-    // 🧠 GERAR KEYWORDS INTELIGENTES a partir do input
-    const keywords = gerarKeywordsComprador(query);
-    const modoBusca = nacional ? 'NACIONAL' : (location || 'BRASIL');
+    const nicho = detectarNicho(query);
+    const grupos = GRUPOS_POR_NICHO[nicho] || GRUPOS_POR_NICHO.agro;
     
-    console.log(`🔍 Facebook Groups (${modoBusca}): "${query}"`);
-    console.log(`📋 ${keywords.length} keywords: ${keywords.slice(0, 4).join(' | ')}...`);
+    if (grupos.length === 0) {
+      console.warn('Nenhum grupo cadastrado para nicho: ' + nicho);
+      return [];
+    }
 
-    const url = `https://api.apify.com/v2/acts/${ACTOR_ID}/run-sync-get-dataset-items?token=${APIFY_API_TOKEN}`;
+    const modoBusca = nacional ? 'NACIONAL' : (location || 'BRASIL');
+    console.log('Facebook Groups (' + modoBusca + '): "' + query + '" - nicho: ' + nicho + ' - ' + grupos.length + ' grupos');
+
+    const url = 'https://api.apify.com/v2/acts/' + ACTOR_ID + '/run-sync-get-dataset-items?token=' + APIFY_API_TOKEN;
 
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        keywords: keywords,
-        countryCode: 'br',
-       maxPosts: 100,               // 100 por keyword = ~330 max total 
-        afterDate: 'last_month'
+        startUrls: grupos,
+        maxPosts: 15,
+        maxComments: 0,
+        onlyPostsNewerThan: '1 month',
+        viewOption: 'CHRONOLOGICAL'
       })
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Apify Facebook erro:', response.status, errText);
+      console.error('Apify Facebook erro:', response.status, errText.slice(0, 500));
       return [];
-    } 
+    }
 
     const data = await response.json();
     const posts = Array.isArray(data) ? data : [];
+    console.log('Facebook Groups: ' + posts.length + ' posts brutos');
 
-console.log(`📥 Facebook Groups: ${posts.length} posts brutos`);
-    if (posts.length === 0) {
-      console.log('⚠️ Apify retornou 0 posts. Payload enviado:', JSON.stringify({keywords: keywords.slice(0, 3), countryCode: 'br', maxPosts: 100}));
-    }
-    
-    // Filtro: só posts com intenção de compra
     const keywordsNorm = KEYWORDS_COMPRA.map(normalizar);
 
     const filtrados = posts
-      .filter(post => {
+      .filter(function(post) {
         const texto = normalizar(post.text || post.message || post.postText || '');
-        return keywordsNorm.some(k => texto.includes(k));
+        return keywordsNorm.some(function(k) { return texto.indexOf(k) !== -1; });
       })
-      .map(post => {
+      .map(function(post) {
         const textoPost = post.text || post.message || post.postText || '';
         const textoNorm = normalizar(textoPost);
         
-        const mencionaLocal = !nacional && location
-          ? textoNorm.includes(normalizar(location.split(',')[0]))
+        const mencionaLocal = (!nacional && location)
+          ? textoNorm.indexOf(normalizar(location.split(',')[0])) !== -1
           : false;
 
         const telefone = extrairTelefone(textoPost);
 
+        // Nome do autor (multiplas possibilidades)
+        const nomeAutor = (post.user && post.user.name) || 
+                          (post.author && post.author.name) || 
+                          post.authorName || 
+                          post.userName ||
+                          'Comprador';
+
+        // URL do post
+        const urlPost = post.url || post.postUrl || post.facebookUrl || post.link || '';
+
+        // Data
+        let dataPost = new Date().toISOString().split('T')[0];
+        if (post.time) {
+          try {
+            dataPost = new Date(post.time).toISOString().split('T')[0];
+          } catch (e) {}
+        } else if (post.timestamp) {
+          try {
+            dataPost = new Date(post.timestamp * 1000).toISOString().split('T')[0];
+          } catch (e) {}
+        }
+
         return {
-          name: post.author?.name || post.authorName || post.user?.name || 'Comprador',
+          name: nomeAutor,
           phone: telefone || '',
           source: 'Facebook Groups',
-          sourceUrl: post.url || post.postUrl || post.link || '',
+          sourceUrl: urlPost,
           intent: textoPost.substring(0, 400),
           location: mencionaLocal ? location : 'Brasil',
-          date: post.createdAt 
-            ? new Date(post.createdAt * 1000).toISOString().split('T')[0]
-            : post.date || new Date().toISOString().split('T')[0],
+          date: dataPost,
           contact: telefone || null,
           score: mencionaLocal ? 98 : (nacional ? 90 : 95),
           tipo: 'buyer_intent',
-          grupo: post.groupName || post.group || 'Grupo Facebook'
+          grupo: post.groupTitle || post.group || post.groupName || 'Grupo Facebook'
         };
       })
-      .filter(p => p.sourceUrl && p.sourceUrl.startsWith('http'));
+      .filter(function(p) { return p.sourceUrl && p.sourceUrl.indexOf('http') === 0; });
 
-    // Se regional, prioriza os da cidade
     if (!nacional && location) {
-      const regionais = filtrados.filter(p => p.score === 98);
-      console.log(`✅ Facebook Groups: ${regionais.length} regionais / ${filtrados.length} total`);
+      const regionais = filtrados.filter(function(p) { return p.score === 98; });
+      console.log('Facebook Groups: ' + regionais.length + ' regionais / ' + filtrados.length + ' total');
       return regionais.length > 0 ? regionais : filtrados;
     }
 
-    console.log(`✅ Facebook Groups: ${filtrados.length} posts com intenção`);
+    console.log('Facebook Groups: ' + filtrados.length + ' com intencao');
     return filtrados;
 
   } catch (err) {
-    console.error('Erro Apify Facebook Groups:', err);
+    console.error('Erro Apify:', err.message);
     return [];
   }
 }
 
 // ============================================================
-// FONTE 2: SERPER.DEV (Regional → Nacional)
+// FONTE 2: SERPER.DEV
 // ============================================================
-async function buscarSerper(query, location, nacional = false) {
+async function buscarSerper(query, location, nacional) {
   if (!SERPER_API_KEY) return [];
 
   try {
     const q = (!nacional && location)
-      ? `"quero comprar" OR "onde compro" "${query}" ${location}`
-      : `"quero comprar" OR "onde compro" "${query}"`;
+      ? '"quero comprar" OR "onde compro" "' + query + '" ' + location
+      : '"quero comprar" OR "onde compro" "' + query + '"';
 
     const modoBusca = nacional ? 'NACIONAL' : (location || 'BRASIL');
-    console.log(`🔍 Serper (${modoBusca}): "${q}"`);
+    console.log('Serper (' + modoBusca + '): "' + q + '"');
 
     const response = await fetch('https://google.serper.dev/search', {
       method: 'POST',
       headers: { 'X-API-KEY': SERPER_API_KEY, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ q, gl: 'br', hl: 'pt-br', num: 15 })
+      body: JSON.stringify({ q: q, gl: 'br', hl: 'pt-br', num: 15 })
     });
 
     if (!response.ok) return [];
     const data = await response.json();
     const organic = data.organic || [];
 
-    console.log(`✅ Serper: ${organic.length} resultados`);
+    console.log('Serper: ' + organic.length + ' resultados');
 
-    return organic.map(item => {
+    return organic.map(function(item) {
       const snippet = item.snippet || '';
       const telefone = extrairTelefone(snippet);
       
       return {
-        name: item.title || 'Menção',
+        name: item.title || 'Mencao',
         phone: telefone || '',
         source: item.displayLink || 'Google Search',
         sourceUrl: item.link || '',
@@ -307,34 +264,24 @@ async function buscarSerper(query, location, nacional = false) {
       };
     });
   } catch (err) {
-    console.error('Erro Serper:', err);
+    console.error('Erro Serper:', err.message);
     return [];
   }
 }
 
 // ============================================================
-// FONTE 3: GEMINI (Regional → Nacional)
+// FONTE 3: GEMINI + Google Search
 // ============================================================
-async function buscarGemini(query, location, nacional = false) {
+async function buscarGemini(query, location, nacional) {
   if (!GEMINI_API_KEY) return [];
 
   try {
-    const localTexto = (!nacional && location) ? ` em ${location}` : ' no Brasil';
+    const localTexto = (!nacional && location) ? ' em ' + location : ' no Brasil';
     
-    const prompt = `Você é um rastreador de INTENÇÃO DE COMPRA. Busque na web menções públicas de pessoas procurando comprar "${query}"${localTexto}.
-
-REGRAS:
-- Retorne APENAS compradores (quem quer comprar, procura, pergunta onde encontrar)
-- NÃO retorne lojas, e-commerce, catálogos, fabricantes
-- Priorize: Facebook, fóruns, Reddit, Instagram, Twitter/X
-
-FORMATO (retorne APENAS array JSON, sem markdown):
-[{"name": "nome ou 'Comprador'", "source": "site", "sourceUrl": "URL completa", "intent": "trecho exato da menção", "location": "cidade/estado", "phone": "telefone se visível no texto", "date": "AAAA-MM-DD", "score": 80}]
-
-Se não achar nada, retorne: []`;
+    const prompt = 'Voce e um rastreador de INTENCAO DE COMPRA. Busque na web mencoes publicas de pessoas procurando comprar "' + query + '"' + localTexto + '.\n\nREGRAS:\n- Retorne APENAS compradores (quem quer comprar, procura, pergunta onde encontrar)\n- NAO retorne lojas, e-commerce, catalogos, fabricantes\n- Priorize: Facebook, foruns, Reddit, Instagram, Twitter/X\n\nFORMATO (retorne APENAS array JSON, sem markdown):\n[{"name": "nome ou Comprador", "source": "site", "sourceUrl": "URL completa", "intent": "trecho exato da mencao", "location": "cidade/estado", "phone": "telefone se visivel no texto", "date": "AAAA-MM-DD", "score": 80}]\n\nSe nao achar nada, retorne: []';
 
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${GEMINI_API_KEY}`,
+      'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GEMINI_API_KEY,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -349,7 +296,7 @@ Se não achar nada, retorne: []`;
     if (!response.ok) return [];
     const data = await response.json();
 
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text || '';
+    const text = (data.candidates && data.candidates[0] && data.candidates[0].content && data.candidates[0].content.parts && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text) || '';
     if (!text) return [];
 
     let jsonText = text.trim()
@@ -362,12 +309,12 @@ Se não achar nada, retorne: []`;
     if (!arrayMatch) return [];
 
     let resultados = [];
-    try { resultados = JSON.parse(arrayMatch[0]); } catch { return []; }
+    try { resultados = JSON.parse(arrayMatch[0]); } catch (e) { return []; }
     if (!Array.isArray(resultados)) return [];
 
     const leads = resultados
-      .filter(r => r.sourceUrl && r.sourceUrl.startsWith('http'))
-      .map(r => {
+      .filter(function(r) { return r.sourceUrl && r.sourceUrl.indexOf('http') === 0; })
+      .map(function(r) {
         const telefone = r.phone || extrairTelefone(r.intent || '');
         return {
           name: r.name || 'Comprador',
@@ -384,16 +331,16 @@ Se não achar nada, retorne: []`;
         };
       });
 
-    console.log(`✅ Gemini: ${leads.length} menções`);
+    console.log('Gemini: ' + leads.length + ' mencoes');
     return leads;
   } catch (err) {
-    console.error('Erro Gemini:', err);
+    console.error('Erro Gemini:', err.message);
     return [];
   }
 }
 
 // ============================================================
-// HANDLER PRINCIPAL (Regional → Fallback Nacional)
+// HANDLER PRINCIPAL
 // ============================================================
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Credentials', true);
@@ -402,48 +349,50 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version');
 
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
-  if (req.method !== 'POST') return res.status(405).json({ error: 'Método não permitido' });
+  if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  const { query, location, count = 20 } = req.body;
-  if (!query) return res.status(400).json({ error: 'Forneça o que deseja rastrear.' });
+  const body = req.body || {};
+  const query = body.query;
+  const location = body.location || '';
+  const count = body.count || 20;
+
+  if (!query) return res.status(400).json({ error: 'Forneca o que deseja rastrear.' });
 
   try {
-    console.log(`\n🎯 ============ B2C: "${query}"${location ? ` em ${location}` : ''} ============`);
+    console.log('===== B2C v12: "' + query + '" em ' + (location || 'Brasil') + ' =====');
 
-    // 🎯 FASE 1: Busca REGIONAL (se localização fornecida)
     let todos = [];
     let modoUsado = 'nacional';
 
     if (location && location.trim()) {
-      console.log(`📍 FASE 1: Busca regional em "${location}"`);
+      console.log('FASE 1: Regional em ' + location);
       
-      const [fbRegional, serperRegional, geminiRegional] = await Promise.all([
+      const resultados = await Promise.all([
         buscarFacebookGroups(query, location, false),
         buscarSerper(query, location, false),
         buscarGemini(query, location, false)
       ]);
 
-      todos = [...fbRegional, ...geminiRegional, ...serperRegional];
+      todos = [].concat(resultados[0], resultados[2], resultados[1]);
       modoUsado = 'regional';
 
-      console.log(`📊 Regional: ${todos.length} leads encontrados`);
+      console.log('Regional: ' + todos.length + ' leads');
     }
 
-    // 🌎 FASE 2: FALLBACK NACIONAL (se < 5 resultados ou sem localização)
     if (todos.length < 5) {
-      console.log(`⚠️ Poucos resultados regionais (${todos.length}). Buscando NACIONALMENTE...`);
+      console.log('Fallback NACIONAL...');
 
-      const [fbNacional, serperNacional, geminiNacional] = await Promise.all([
+      const resultadosNac = await Promise.all([
         buscarFacebookGroups(query, '', true),
         buscarSerper(query, '', true),
         buscarGemini(query, '', true)
       ]);
 
-      const todosNacional = [...fbNacional, ...geminiNacional, ...serperNacional];
-      console.log(`📊 Nacional: ${todosNacional.length} leads encontrados`);
+      const todosNacional = [].concat(resultadosNac[0], resultadosNac[2], resultadosNac[1]);
+      console.log('Nacional: ' + todosNacional.length + ' leads');
 
       if (todos.length > 0) {
-        todos = [...todos, ...todosNacional];
+        todos = todos.concat(todosNacional);
         modoUsado = 'regional + nacional';
       } else {
         todos = todosNacional;
@@ -451,35 +400,33 @@ export default async function handler(req, res) {
       }
     }
 
-    // Deduplicar por URL
-    const vistos = new Set();
-    const unicos = todos.filter(item => {
-      if (!item.sourceUrl || vistos.has(item.sourceUrl)) return false;
-      vistos.add(item.sourceUrl);
+    const vistos = {};
+    const unicos = todos.filter(function(item) {
+      if (!item.sourceUrl || vistos[item.sourceUrl]) return false;
+      vistos[item.sourceUrl] = true;
       return true;
     });
 
-    // Ordenar por score
-    unicos.sort((a, b) => (b.score || 0) - (a.score || 0));
+    unicos.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
 
     const resultados = unicos.slice(0, count);
-    const comTelefone = resultados.filter(r => r.phone).length;
+    const comTelefone = resultados.filter(function(r) { return r.phone; }).length;
 
     const fontes = {
-      facebook_groups: resultados.filter(r => r.source === 'Facebook Groups').length,
-      serper: resultados.filter(r => r.source.includes('Google')).length,
-      gemini: resultados.filter(r => r.source === 'Gemini').length,
+      facebook_groups: resultados.filter(function(r) { return r.source === 'Facebook Groups'; }).length,
+      serper: resultados.filter(function(r) { return r.source.indexOf('Google') !== -1; }).length,
+      gemini: resultados.filter(function(r) { return r.source === 'Gemini'; }).length,
       com_telefone: comTelefone
     };
 
-    console.log(`✅ Finalizado: ${resultados.length} leads (${comTelefone} com telefone) - modo: ${modoUsado}\n`);
+    console.log('===== Finalizado: ' + resultados.length + ' leads (' + comTelefone + ' com tel) =====');
 
     res.status(200).json({
       leads: resultados,
       meta: {
         intent: 'b2c_buyer_intent',
-        summary: `${resultados.length} leads de compradores para "${query}"${location ? ` em ${location}` : ''} (modo: ${modoUsado}). ${comTelefone} com telefone disponível.`,
-        targetAudience: 'Pessoas com intenção de compra',
+        summary: resultados.length + ' leads para "' + query + '"' + (location ? ' em ' + location : '') + ' (modo: ' + modoUsado + '). ' + comTelefone + ' com telefone.',
+        targetAudience: 'Pessoas com intencao de compra',
         modo_busca: modoUsado,
         fontes_utilizadas: fontes,
         total_antes_deduplicacao: todos.length
