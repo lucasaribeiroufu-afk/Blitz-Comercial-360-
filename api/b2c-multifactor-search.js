@@ -191,7 +191,7 @@ async function buscarFacebookGroups(query, location, nacional = false) {
       body: JSON.stringify({
         keywords: keywords,
         countryCode: 'br',
-       max Posts: 15,               // 15 por keyword = ~330 max total 
+       maxPosts: 15,               // 15 por keyword = ~330 max total 
         afterDate: 'last_month'
       })
     });
