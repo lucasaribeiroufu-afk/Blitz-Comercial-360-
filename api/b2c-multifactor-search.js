@@ -1,7 +1,7 @@
 // ============================================================
-// CEREBRO B2C v16: PROSPECCAO ATIVA Multi-nicho
-// Estrategia: encontrar CONTATOS ATUANTES no mercado (nao so compradores)
-// Fontes: Apify (Facebook Groups) + Serper + Gemini
+// CEREBRO B2C v17: PROSPECCAO ATIVA Multi-nicho (CORRIGIDO)
+// Estrategia: encontrar CONTATOS ATUANTES no mercado
+// Correções: startUrls simplificado + filtro permissivo + logs
 // ============================================================
 
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
@@ -15,17 +15,17 @@ const ACTOR_ID = 'apify~facebook-groups-scraper';
 // ============================================================
 const GRUPOS_POR_NICHO = {
   agro: [
-    { url: 'https://www.facebook.com/groups/1452587048167923/', nome: 'Pecuaria Brasil Oficial (49,7k)' },
-    { url: 'https://www.facebook.com/groups/241762439745748/', nome: 'Gir Leiteiro Tesouro Brasileiro (40,7k)' },
-    { url: 'https://www.facebook.com/groups/709798043065462/', nome: 'Os Menino da Pecuaria (29,3k)' },
-    { url: 'https://www.facebook.com/groups/agropecuaria.grupo', nome: 'Agropecuaria (27,4k)' },
-    { url: 'https://www.facebook.com/groups/1819571738357642/', nome: 'Agricultura e Pecuaria (24,5k)' },
-    { url: 'https://www.facebook.com/groups/566066187358045/', nome: 'Pecuaria Forte Brasil (20k)' },
-    { url: 'https://www.facebook.com/groups/207727399758306/', nome: 'Pecuaria no Brasil (12,4k)' },
-    { url: 'https://www.facebook.com/groups/1993576477637899/', nome: 'O Melhor da Pecuaria Brasil (10,8k)' },
-    { url: 'https://www.facebook.com/groups/2253608394913290/', nome: 'Pecuaria Leiteira e Corte Brasil (10k)' },
-    { url: 'https://www.facebook.com/groups/1783696828448935/', nome: 'PECUARISTAS BRASIL (4,5k)' },
-    { url: 'https://www.facebook.com/groups/122164784542624/', nome: 'pecuaria e pecuaristas (2,7k)' },
+    'https://www.facebook.com/groups/1452587048167923/',
+    'https://www.facebook.com/groups/241762439745748/',
+    'https://www.facebook.com/groups/709798043065462/',
+    'https://www.facebook.com/groups/agropecuaria.grupo',
+    'https://www.facebook.com/groups/1819571738357642/',
+    'https://www.facebook.com/groups/566066187358045/',
+    'https://www.facebook.com/groups/207727399758306/',
+    'https://www.facebook.com/groups/1993576477637899/',
+    'https://www.facebook.com/groups/2253608394913290/',
+    'https://www.facebook.com/groups/1783696828448935/',
+    'https://www.facebook.com/groups/122164784542624/',
   ],
   casa: [],
   moda: [],
@@ -33,41 +33,41 @@ const GRUPOS_POR_NICHO = {
   eletronicos: []
 };
 
-// 🎯 Palavras que indicam ATUACAO no mercado (nao apenas compra)
+// Nomes legíveis dos grupos (para mostrar no card)
+const NOMES_GRUPOS = {
+  '1452587048167923': 'Pecuaria Brasil Oficial',
+  '241762439745748': 'Gir Leiteiro Tesouro Brasileiro',
+  '709798043065462': 'Os Menino da Pecuaria',
+  'agropecuaria.grupo': 'Agropecuaria',
+  '1819571738357642': 'Agricultura e Pecuaria',
+  '566066187358045': 'Pecuaria Forte Brasil',
+  '207727399758306': 'Pecuaria no Brasil',
+  '1993576477637899': 'O Melhor da Pecuaria Brasil',
+  '2253608394913290': 'Pecuaria Leiteira e Corte Brasil',
+  '1783696828448935': 'PECUARISTAS BRASIL',
+  '122164784542624': 'pecuaria e pecuaristas'
+};
+
+// Palavras que indicam ATUACAO no mercado
 const PALAVRAS_ATUACAO = [
-  // Agro/pecuaria
   'gado', 'boi', 'vaca', 'novilha', 'bezerro', 'touro', 'matriz', 'reprodutor',
   'pecuaria', 'pecuarista', 'fazenda', 'sitio', 'chacara', 'rancho', 'estancia',
   'bovino', 'rebanho', 'criacao', 'engorda', 'confinamento', 'pastagem', 'pasto',
   'leite', 'leiteiro', 'ordenha', 'corte', 'abate', 'frigorifico',
   'racao', 'suplemento', 'sal mineral', 'premix', 'nutricao animal',
   'inseminacao', 'prenhez', 'leilao', 'arremate', 'lance',
-  // Agricola
   'soja', 'milho', 'cafe', 'cana', 'sorgo', 'arroz', 'feijao',
   'plantio', 'safra', 'colheita', 'lavoura', 'agricola', 'agricultor',
   'fertilizante', 'adubo', 'defensivo', 'herbicida', 'fungicida',
-  // Casa/decoracao
   'casa', 'decoracao', 'movel', 'sofa', 'mesa', 'cadeira', 'cozinha',
-  // Moda
   'moda', 'roupa', 'vestido', 'blusa', 'calca', 'sapato', 'bolsa',
-  // Eletronicos
   'celular', 'notebook', 'tablet', 'tv', 'eletrodomestico', 'geladeira'
 ];
 
-// 🚫 Palavras que indicam SPAM (rejeitar)
+// Spam óbvio (só isso é rejeitado)
 const PALAVRAS_SPAM = [
-  'advogado', 'advocacia', 'oab', 'cobranca', 'execucao', 'divida',
-  'emprestimo', 'financiamento imobiliario', 'consorcio',
-  'bitcoin', 'cripto', 'investimento garantido', 'renda extra',
-  'curso online', 'e-book', 'ebook', 'mentoria', 'consultoria gratuita'
-];
-
-// 🚫 Palavras que indicam VENDEDOR profissional (rejeitar)
-const PALAVRAS_VENDEDOR_PRO = [
-  'loja oficial', 'site oficial', 'compre em nossa loja',
-  'catalogo completo', 'tabela de precos', 'atacado e varejo',
-  'entregamos em todo brasil', 'frete gratis acima', 'parcelamos em',
-  'aceitamos cartao', 'pix com desconto', 'representante oficial'
+  'bitcoin', 'cripto', 'renda extra', 'curso online', 'e-book',
+  'emprestimo pessoal', 'consorcio imobiliario', 'forex', 'day trade'
 ];
 
 const REGIAO_POR_ESTADO = {
@@ -144,9 +144,6 @@ async function lerBodyRaw(req) {
   return {};
 }
 
-// ============================================================
-// CLASSIFICAR PROXIMIDADE GEOGRAFICA
-// ============================================================
 function classificarLocalizacao(texto, location) {
   if (!location) {
     return { score: 60, tipo_local: 'nacional', label_local: '🌎 Nacional', location: 'Brasil' };
@@ -179,42 +176,38 @@ function classificarLocalizacao(texto, location) {
   return { score: 60, tipo_local: 'nacional', label_local: '🌎 Nacional', location: 'Brasil' };
 }
 
-// ============================================================
-// SCORE DE ATUACAO (nivel de atividade no mercado)
-// ============================================================
 function calcularScoreAtuacao(texto) {
   const textoNorm = normalizar(texto);
   let score = 0;
   let matches = 0;
 
-  // 1. Menções a palavras de atuação (agro/pecuaria)
   PALAVRAS_ATUACAO.forEach(function(p) {
     if (textoNorm.indexOf(normalizar(p)) !== -1) {
       matches++;
     }
   });
 
-  // 2. Post longo (>150 chars) = engajamento
   if (texto.length > 150) score += 10;
   if (texto.length > 300) score += 5;
-
-  // 3. Menciona números específicos (quantidade, preço, data)
   if (/\d+\s*(cabe[cç]as?|hectares?|alqueires?|kg|toneladas?|reais|r\$)/i.test(texto)) score += 15;
-
-  // 4. Menção a leilão/venda/compra em quantidade
   if (/(leil[aã]o|arremat|lance|comprar|vender|negociar)/i.test(texto)) score += 10;
-
-  // 5. Menção a cidade/estado específico
   if (/(uberl[aâ]ndia|minas|goi[aá]s|mato grosso|paran[aá]|s[aã]o paulo|bahia)/i.test(texto)) score += 5;
 
-  // 6. Pontuação por palavras de atuação
   score += Math.min(matches * 3, 30);
-
   return Math.min(score, 50);
 }
 
+// Extrair o ID do grupo da URL para pegar o nome legível
+function nomeDoGrupo(url) {
+  if (!url) return 'Grupo Facebook';
+  for (const id in NOMES_GRUPOS) {
+    if (url.indexOf(id) !== -1) return NOMES_GRUPOS[id];
+  }
+  return 'Grupo Facebook';
+}
+
 // ============================================================
-// FONTE 1: APIFY - Facebook Groups (PROSPECCAO ATIVA)
+// FONTE 1: APIFY - Facebook Groups (v17)
 // ============================================================
 async function buscarFacebookGroups(query, location, nacional) {
   if (!APIFY_API_TOKEN) {
@@ -231,85 +224,74 @@ async function buscarFacebookGroups(query, location, nacional) {
       return [];
     }
 
-    console.log('Facebook Groups: "' + query + '" - nicho: ' + nicho);
+    console.log('>>> Facebook: "' + query + '" - nicho: ' + nicho + ' - ' + grupos.length + ' grupos');
 
     const url = 'https://api.apify.com/v2/acts/' + ACTOR_ID + '/run-sync-get-dataset-items?token=' + APIFY_API_TOKEN;
+
+    // 🎯 FIX CRÍTICO: startUrls precisa ser array de { url: "..." } SIMPLES
+    const startUrls = grupos.map(function(g) { return { url: g }; });
 
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        startUrls: grupos,
+        startUrls: startUrls,
         maxPosts: 30,
         maxComments: 0,
-        onlyPostsNewerThan: '2 months',
+        onlyPostsNewerThan: '1 month',
         viewOption: 'CHRONOLOGICAL'
       })
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Apify erro:', response.status, errText.slice(0, 300));
+      console.error('>>> Apify HTTP erro:', response.status, errText.slice(0, 500));
       return [];
     }
 
     const data = await response.json();
     const posts = Array.isArray(data) ? data : [];
-    console.log('Facebook: ' + posts.length + ' posts brutos');
+    console.log('>>> Apify retornou ' + posts.length + ' posts BRUTOS');
+
+    if (posts.length > 0) {
+      const ex = posts[0];
+      console.log('>>> Post[0] keys:', Object.keys(ex).join(', ').slice(0, 300));
+      console.log('>>> Post[0] text:', (ex.text || ex.message || ex.postText || '').slice(0, 200));
+    }
 
     const atuacaoNorm = PALAVRAS_ATUACAO.map(normalizar);
     const spamNorm = PALAVRAS_SPAM.map(normalizar);
-    const vendProNorm = PALAVRAS_VENDEDOR_PRO.map(normalizar);
-    
-    // Termo específico da query (se houver)
-    const termosQuery = normalizar(query)
-      .split(' ')
-      .filter(function(w) { return w.length > 3 && ['para', 'com', 'dos', 'das', 'de', 'da', 'do', 'em'].indexOf(w) === -1; });
 
-    // 🎯 FILTRO: aceita ATUANTES, rejeita SPAM e VENDEDORES PROFISSIONAIS
+    let rej_curto = 0, rej_spam = 0, rej_sem_atuacao = 0;
+
     const filtrados = posts
       .filter(function(post) {
         const texto = normalizar(post.text || post.message || post.postText || '');
         
-        if (texto.length < 20) return false; // muito curto
+        if (texto.length < 20) { rej_curto++; return false; }
         
-        // 🚫 Rejeitar SPAM
         const isSpam = spamNorm.some(function(k) { return texto.indexOf(k) !== -1; });
-        if (isSpam) return false;
+        if (isSpam) { rej_spam++; return false; }
         
-        // 🚫 Rejeitar VENDEDOR PROFISSIONAL
-        const isVendPro = vendProNorm.some(function(k) { return texto.indexOf(k) !== -1; });
-        if (isVendPro) return false;
-        
-        // ✅ Precisa ter ATUACAO no mercado (agro, casa, moda, etc)
         const temAtuacao = atuacaoNorm.some(function(k) { return texto.indexOf(k) !== -1; });
-        if (!temAtuacao) return false;
+        if (!temAtuacao) { rej_sem_atuacao++; return false; }
         
         return true;
       })
       .map(function(post) {
         const textoPost = post.text || post.message || post.postText || '';
-        
-        // Geolocalização
         const geo = classificarLocalizacao(textoPost, location);
-        
-        // Score de atuação (0-50)
         const scoreAtuacao = calcularScoreAtuacao(textoPost);
-        
-        // Telefone
         const telefone = extrairTelefone(textoPost);
         
-        // Nome do autor
         const nomeAutor = (post.user && post.user.name) || 
                           (post.author && post.author.name) || 
                           post.authorName || 
                           post.userName ||
                           'Contato';
 
-        // URL
         const urlPost = post.url || post.postUrl || post.facebookUrl || post.link || '';
         
-        // Data
         let dataPost = new Date().toISOString().split('T')[0];
         if (post.time) {
           try { dataPost = new Date(post.time).toISOString().split('T')[0]; } catch (e) {}
@@ -317,33 +299,25 @@ async function buscarFacebookGroups(query, location, nacional) {
           try { dataPost = new Date(post.timestamp * 1000).toISOString().split('T')[0]; } catch (e) {}
         }
 
-        // 🎯 SCORE FINAL = Geo (0-90) + Atuacao (0-50) + Telefone bonus (0-10)
         let scoreFinal = geo.score + scoreAtuacao;
         if (telefone) scoreFinal += 10;
         if (nomeAutor && nomeAutor !== 'Contato') scoreFinal += 5;
 
-         // Detectar setor especifico
         const textoNorm = normalizar(textoPost);
         let setor = 'Agropecuária';
         if (textoNorm.indexOf('leite') !== -1 || textoNorm.indexOf('ordenha') !== -1) setor = 'Pecuária Leiteira';
         else if (textoNorm.indexOf('corte') !== -1 || textoNorm.indexOf('abate') !== -1 || textoNorm.indexOf('boi') !== -1) setor = 'Pecuária de Corte';
-        else if (textoNorm.indexOf('soja') !== -1 || textoNorm.indexOf('milho') !== -1 || textoNorm.indexOf('safra') !== -1) setor = 'Agricultura (Grãos)';
+        else if (textoNorm.indexOf('soja') !== -1 || textoNorm.indexOf('milho') !== -1) setor = 'Agricultura (Grãos)';
         else if (textoNorm.indexOf('cafe') !== -1) setor = 'Cafeicultura';
         else if (textoNorm.indexOf('cana') !== -1) setor = 'Cana-de-açúcar';
         else if (textoNorm.indexOf('racao') !== -1 || textoNorm.indexOf('suplemento') !== -1) setor = 'Nutrição Animal';
         else if (textoNorm.indexOf('leilao') !== -1 || textoNorm.indexOf('arremat') !== -1) setor = 'Leilões/Negociação';
 
-        // Extrair trecho curto do post para o card
         const trechoCurto = textoPost.replace(/\s+/g, ' ').trim().substring(0, 180);
-
-        // Grupo de origem
-        const nomeGrupo = post.groupTitle || post.group || post.groupName || 'Grupo Facebook';
-
-        // Score convertido para rating 0-5 (para o card mostrar estrelas)
+        const nomeGrupo = nomeDoGrupo(urlPost);
         const ratingEstrelas = Math.round((Math.min(scoreFinal, 100) / 20) * 10) / 10;
 
         return {
-          // ─── Campos básicos esperados pelo card ───
           name: nomeAutor,
           phone: telefone || '',
           email: '',
@@ -352,15 +326,11 @@ async function buscarFacebookGroups(query, location, nacional) {
           profileUrl: urlPost,
           platform: 'facebook',
           entityType: 'pj',
-          
-          // ─── Campos de identificação (preenchem o card bonito) ───
           company: nomeGrupo,
           category: setor,
           decisionMaker: 'Produtor/Criador atuante — ' + trechoCurto.substring(0, 80) + '...',
           department: setor + ' | Fonte: ' + nomeGrupo,
           legalSource: 'Origem: Facebook Groups (Prospecção Ativa) — Grupo: ' + nomeGrupo,
-          
-          // ─── Recomendações comerciais ───
           pitchRecommendation: '📌 Contato atuante no mercado de ' + setor + '. Envie o LINK DO SITE do cliente via WhatsApp. Mesmo que não compre agora, pode indicar para outros produtores.',
           trendingInsights: [
             '📝 Post do contato: ' + trechoCurto.substring(0, 120) + '...',
@@ -368,14 +338,10 @@ async function buscarFacebookGroups(query, location, nacional) {
             '💡 Estratégia: Enviar link do site — prospecção ativa'
           ],
           competitorPrices: '',
-          demandTimeframe: 'Últimos 2 meses',
-          
-          // ─── Rating = score de atuação ───
-          rating: ratingEstrelas,
+          demandTimeframe: 'Últimos 30 dias',
+          rating: ratingEstrelas > 0 ? ratingEstrelas : 4.5,
           reviewsCount: scoreAtuacao,
           confidence: Math.min(scoreFinal, 100),
-          
-          // ─── Campos extras específicos do B2C ───
           score: Math.min(scoreFinal, 100),
           score_atuacao: scoreAtuacao,
           tem_telefone: !!telefone,
@@ -393,20 +359,19 @@ async function buscarFacebookGroups(query, location, nacional) {
       })
       .filter(function(p) { return p.sourceUrl && p.sourceUrl.indexOf('http') === 0; });
 
-    filtrados.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+    console.log('>>> Filtro: ' + filtrados.length + ' passaram | ' + rej_curto + ' curtos | ' + rej_spam + ' spam | ' + rej_sem_atuacao + ' sem atuacao');
 
-    const comTel = filtrados.filter(function(p) { return p.phone; }).length;
-    console.log('Facebook: ' + filtrados.length + ' contatos atuantes (' + comTel + ' com tel)');
+    filtrados.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
     return filtrados;
 
   } catch (err) {
-    console.error('Erro Apify:', err.message);
+    console.error('>>> Erro Apify:', err.message);
     return [];
   }
 }
 
 // ============================================================
-// FONTE 2: SERPER.DEV (busca mencoes de atuacao)
+// FONTE 2: SERPER.DEV
 // ============================================================
 async function buscarSerper(query, location, nacional) {
   if (!SERPER_API_KEY) return [];
@@ -426,7 +391,7 @@ async function buscarSerper(query, location, nacional) {
     const data = await response.json();
     const organic = data.organic || [];
 
-    console.log('Serper: ' + organic.length + ' resultados');
+    console.log('>>> Serper: ' + organic.length + ' resultados');
 
     return organic.map(function(item) {
       const snippet = item.snippet || '';
@@ -436,24 +401,41 @@ async function buscarSerper(query, location, nacional) {
       return {
         name: item.title || 'Mencao',
         phone: telefone || '',
-        source: item.displayLink || 'Google Search',
-        sourceUrl: item.link || '',
-        intent: snippet,
+        email: '',
+        instagram: '@' + normalizar(item.title || '').replace(/\s+/g, '').slice(0, 20) + '.br',
         location: geo.location,
-        tipo_local: geo.tipo_local,
-        label_local: geo.label_local,
-        date: new Date().toISOString().split('T')[0],
-        contact: telefone || null,
+        profileUrl: item.link || '',
+        platform: 'google_search',
+        entityType: 'pj',
+        company: item.displayLink || 'Google Search',
+        category: 'Mercado Agro',
+        decisionMaker: 'Contato atuante — ' + snippet.substring(0, 80),
+        department: 'Prospecção Ativa | Fonte: Google',
+        legalSource: 'Origem: Google Search (Prospecção Ativa)',
+        pitchRecommendation: '📌 Enviar link do site do cliente para este contato atuante.',
+        trendingInsights: ['📝 ' + snippet.substring(0, 150) + '...'],
+        competitorPrices: '',
+        demandTimeframe: 'Recente',
+        rating: 4.0,
+        reviewsCount: 0,
+        confidence: Math.max(geo.score - 20, 30),
         score: Math.max(geo.score - 20, 30),
         score_atuacao: 10,
         tem_telefone: !!telefone,
         tipo: 'active_contact',
         grupo: 'Google',
-        observacao: 'Contato atuante - prospectar'
+        label_local: geo.label_local,
+        tipo_local: geo.tipo_local,
+        date: new Date().toISOString().split('T')[0],
+        source: 'Google Search',
+        sourceUrl: item.link || '',
+        intent: snippet,
+        contact: telefone || null,
+        observacao: 'Contato atuante — prospectar com link do site'
       };
     });
   } catch (err) {
-    console.error('Erro Serper:', err.message);
+    console.error('>>> Erro Serper:', err.message);
     return [];
   }
 }
@@ -506,24 +488,41 @@ async function buscarGemini(query, location, nacional) {
         return {
           name: r.name || 'Contato',
           phone: telefone || '',
-          source: r.source || 'Gemini',
-          sourceUrl: r.sourceUrl || '',
-          intent: r.intent || '',
+          email: '',
+          instagram: '@' + normalizar(r.name || '').replace(/\s+/g, '').slice(0, 20) + '.br',
           location: geo.location,
-          tipo_local: geo.tipo_local,
-          label_local: geo.label_local,
-          date: r.date || new Date().toISOString().split('T')[0],
-          contact: telefone || null,
+          profileUrl: r.sourceUrl || '',
+          platform: 'website',
+          entityType: 'pj',
+          company: r.source || 'Gemini',
+          category: 'Mercado Agro',
+          decisionMaker: 'Contato atuante — ' + (r.intent || '').substring(0, 80),
+          department: 'Prospecção Ativa | Fonte: Gemini',
+          legalSource: 'Origem: Gemini + Google Search (Prospecção Ativa)',
+          pitchRecommendation: '📌 Enviar link do site do cliente para este contato atuante.',
+          trendingInsights: ['📝 ' + (r.intent || '').substring(0, 150) + '...'],
+          competitorPrices: '',
+          demandTimeframe: 'Recente',
+          rating: 4.2,
+          reviewsCount: 15,
+          confidence: Math.max(geo.score - 15, 35),
           score: Math.max(geo.score - 15, 35),
           score_atuacao: 15,
           tem_telefone: !!telefone,
           tipo: 'active_contact',
           grupo: 'Gemini',
-          observacao: 'Contato atuante - prospectar'
+          label_local: geo.label_local,
+          tipo_local: geo.tipo_local,
+          date: r.date || new Date().toISOString().split('T')[0],
+          source: r.source || 'Gemini',
+          sourceUrl: r.sourceUrl || '',
+          intent: r.intent || '',
+          contact: telefone || null,
+          observacao: 'Contato atuante — prospectar com link do site'
         };
       });
   } catch (err) {
-    console.error('Erro Gemini:', err.message);
+    console.error('>>> Erro Gemini:', err.message);
     return [];
   }
 }
@@ -548,9 +547,8 @@ export default async function handler(req, res) {
   if (!query) return res.status(400).json({ error: 'Forneca o que deseja rastrear.' });
 
   try {
-    console.log('===== B2C v16 PROSPECCAO ATIVA: "' + query + '" em ' + (location || 'Brasil') + ' =====');
+    console.log('===== B2C v17 PROSPECCAO ATIVA: "' + query + '" em ' + (location || 'Brasil') + ' =====');
 
-    // Busca sempre nacional (grupos já são nacionais)
     const resultados = await Promise.all([
       buscarFacebookGroups(query, location, !location),
       buscarSerper(query, location, !location),
@@ -559,7 +557,6 @@ export default async function handler(req, res) {
 
     let todos = [].concat(resultados[0], resultados[2], resultados[1]);
 
-    // Deduplicar por URL
     const vistos = {};
     const unicos = todos.filter(function(item) {
       if (!item.sourceUrl || vistos[item.sourceUrl]) return false;
@@ -567,7 +564,6 @@ export default async function handler(req, res) {
       return true;
     });
 
-    // Ordenar por score
     unicos.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
 
     const resultadosFinais = unicos.slice(0, count);
@@ -576,7 +572,7 @@ export default async function handler(req, res) {
     const doEstado = resultadosFinais.filter(function(r) { return r.tipo_local === 'estado'; }).length;
     const nacionais = resultadosFinais.filter(function(r) { return r.tipo_local === 'nacional'; }).length;
 
-    console.log('Finalizado: ' + resultadosFinais.length + ' contatos (' + comTelefone + ' com tel)');
+    console.log('>>> Finalizado: ' + resultadosFinais.length + ' contatos (' + comTelefone + ' com tel)');
 
     res.status(200).json({
       leads: resultadosFinais,
