@@ -261,7 +261,7 @@ async function buscarFacebookGroups(query, location, nacional) {
     const termoPrincipal = termosQuery[0] || '';
     console.log('Termos query:', termosQuery.join(', '), '| Principal:', termoPrincipal);
 
-    // 🎯 Filtro + classificacao geografica
+    // 🎯 Filtro + classificacao geografica (com pontuacao por relevancia)
     const filtrados = posts
       .filter(function(post) {
         const texto = normalizar(post.text || post.message || post.postText || '');
@@ -274,9 +274,7 @@ async function buscarFacebookGroups(query, location, nacional) {
         const temVendedor = vendedorNorm.some(function(v) { return texto.indexOf(v) !== -1; });
         if (temVendedor) return false;
         
-        // 3. Precisa ter o termo principal
-        if (termoPrincipal && texto.indexOf(termoPrincipal) === -1) return false;
-        
+        // 3. NÃO rejeitar se faltar termo — apenas pontuar diferente
         return true;
       })
       .map(function(post) {
@@ -302,6 +300,18 @@ async function buscarFacebookGroups(query, location, nacional) {
           try { dataPost = new Date(post.timestamp * 1000).toISOString().split('T')[0]; } catch (e) {}
         }
 
+    // 🎯 Pontuacao por relevancia (bonus se tiver termo principal)
+        const textoNorm = normalizar(textoPost);
+        const temTermoPrincipal = termoPrincipal && textoNorm.indexOf(termoPrincipal) !== -1;
+        const temTodosTermos = termosQuery.every(function(t) { return textoNorm.indexOf(t) !== -1; });
+        const temAlgumTermo = termosQuery.some(function(t) { return textoNorm.indexOf(t) !== -1; });
+
+        let bonusRelevancia = 0;
+        if (temTodosTermos) bonusRelevancia = 15;        // Post perfeito (+15)
+        else if (temTermoPrincipal) bonusRelevancia = 10; // Tem o produto específico (+10)
+        else if (temAlgumTermo) bonusRelevancia = 5;      // Tem contexto (+5)
+        else bonusRelevancia = -10;                       // Só intenção, sem contexto (-10)
+
         return {
           name: nomeAutor,
           phone: telefone || '',
@@ -313,7 +323,8 @@ async function buscarFacebookGroups(query, location, nacional) {
           label_local: geo.label_local,
           date: dataPost,
           contact: telefone || null,
-          score: geo.score,
+          score: Math.min(100, geo.score + bonusRelevancia),
+          relevancia: temTodosTermos ? 'perfeita' : (temTermoPrincipal ? 'alta' : (temAlgumTermo ? 'media' : 'baixa')),
           tipo: 'buyer_intent',
           grupo: post.groupTitle || post.group || post.groupName || 'Grupo Facebook'
         };
