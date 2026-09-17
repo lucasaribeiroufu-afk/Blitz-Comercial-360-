@@ -1,7 +1,8 @@
 // ============================================================
-// CEREBRO B2C v13: Radar de Intencao de Compra MULTI-NICHO
+// CEREBRO B2C v15: Radar de Intencao de Compra MULTI-NICHO
+// Comportamento HIBRIDO: 3+ regionais = so regionais
+//                        <3 regionais = regionais + nacionais com badges
 // Fontes: Apify (Facebook Groups OFICIAL) + Serper + Gemini
-// 11 grupos de agro cadastrados (~231 mil pessoas)
 // ============================================================
 
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
@@ -33,6 +34,7 @@ const GRUPOS_POR_NICHO = {
   eletronicos: []
 };
 
+// Palavras-chave de intencao de compra (frases completas)
 const KEYWORDS_COMPRA = [
   'quero comprar', 'quero adquirir', 'estou procurando', 'estou buscando',
   'onde compro', 'onde encontro', 'onde acho',
@@ -44,15 +46,25 @@ const KEYWORDS_COMPRA = [
   'to precisando', 'estou precisando'
 ];
 
-// 🚫 Palavras que indicam VENDEDOR (excluir esses posts)
+// Palavras que indicam VENDEDOR (excluir)
 const KEYWORDS_VENDEDOR = [
-  'a venda', 'vende-se', 'vendo ', 'vendo-', 'vendemos',
+  'a venda', 'vende-se', 'vendo ', 'vendemos',
   'oportunidade de investimento', 'excelente oportunidade',
   'fazenda a venda', 'fazenda para venda', 'sitio a venda',
   'terreno a venda', 'area a venda', 'propriedade a venda',
-  'leilao', 'leilão', 'lance inicial', 'avaliacao',
+  'leilao', 'lance inicial', 'avaliacao',
   'catalogo', 'tabela de preco', 'consulte valores', 'sob consulta'
 ];
+
+// Mapa de regioes brasileiras
+const REGIAO_POR_ESTADO = {
+  mg: 'sudeste', sp: 'sudeste', rj: 'sudeste', es: 'sudeste',
+  pr: 'sul', sc: 'sul', rs: 'sul',
+  go: 'centrooeste', mt: 'centrooeste', ms: 'centrooeste', df: 'centrooeste',
+  ba: 'nordeste', pe: 'nordeste', ce: 'nordeste', rn: 'nordeste',
+  pb: 'nordeste', al: 'nordeste', se: 'nordeste', pi: 'nordeste', ma: 'nordeste',
+  am: 'norte', pa: 'norte', ac: 'norte', ro: 'norte', rr: 'norte', ap: 'norte', to: 'norte'
+};
 
 function normalizar(s) {
   return (s || '').toLowerCase()
@@ -114,47 +126,83 @@ function detectarNicho(query) {
 }
 
 // ============================================================
-// LER BODY RAW (fix para Vercel que nao parseia JSON)
+// LER BODY RAW (fix para Vercel)
 // ============================================================
 async function lerBodyRaw(req) {
-  // Tentativa 1: req.body ja e objeto
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
-    console.log('Body veio parseado do Vercel:', JSON.stringify(req.body).slice(0, 300));
+    console.log('Body parseado:', JSON.stringify(req.body).slice(0, 200));
     return req.body;
   }
 
-  // Tentativa 2: req.body e string JSON
   if (req.body && typeof req.body === 'string') {
     try {
       const parsed = JSON.parse(req.body);
-      console.log('Body veio como string, parseado:', JSON.stringify(parsed).slice(0, 300));
+      console.log('Body string parseado:', JSON.stringify(parsed).slice(0, 200));
       return parsed;
     } catch (e) {
-      console.error('Erro parse string body:', e.message);
+      console.error('Erro parse string:', e.message);
     }
   }
 
-  // Tentativa 3: ler stream raw
   try {
     const chunks = [];
     for await (const chunk of req) {
       chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
     }
     const rawBody = Buffer.concat(chunks).toString('utf8');
-    console.log('Body lido do stream RAW:', rawBody.slice(0, 300));
+    console.log('Body RAW:', rawBody.slice(0, 300));
     
     if (rawBody) {
       return JSON.parse(rawBody);
     }
   } catch (e) {
-    console.error('Erro ao ler stream raw:', e.message);
+    console.error('Erro stream raw:', e.message);
   }
 
   return {};
 }
 
 // ============================================================
-// FONTE 1: APIFY - Facebook Groups (ator oficial)
+// CLASSIFICAR PROXIMIDADE GEOGRAFICA
+// ============================================================
+function classificarLocalizacao(texto, location) {
+  if (!location) {
+    return { score: 80, tipo_local: 'nacional', label_local: '🌎 Nacional', location: 'Brasil' };
+  }
+
+  const textoNorm = normalizar(texto);
+  const cidadeAlvo = normalizar(location.split(',')[0]);            // "uberlandia"
+  const estadoAlvo = normalizar((location.split(',')[1] || '').trim()); // "mg"
+  
+  // Nivel 1: Menciona a CIDADE (score 98)
+  if (cidadeAlvo && textoNorm.indexOf(cidadeAlvo) !== -1) {
+    return { score: 98, tipo_local: 'cidade', label_local: '📍 ' + location, location: location };
+  }
+
+  // Nivel 2: Menciona o ESTADO (score 92)
+  if (estadoAlvo && estadoAlvo.length >= 2 && textoNorm.indexOf(' ' + estadoAlvo + ' ') !== -1) {
+    return { score: 92, tipo_local: 'estado', label_local: '🏛️ ' + estadoAlvo.toUpperCase(), location: 'Estado: ' + estadoAlvo.toUpperCase() };
+  }
+
+  // Nivel 3: Menciona a REGIAO (score 88)
+  const minhaRegiao = REGIAO_POR_ESTADO[estadoAlvo] || '';
+  if (minhaRegiao) {
+    const estadosRegiao = Object.keys(REGIAO_POR_ESTADO).filter(function(e) {
+      return REGIAO_POR_ESTADO[e] === minhaRegiao;
+    });
+    for (const est of estadosRegiao) {
+      if (textoNorm.indexOf(' ' + est + ' ') !== -1) {
+        return { score: 88, tipo_local: 'regiao', label_local: '🗺️ Regiao ' + minhaRegiao, location: 'Regiao ' + minhaRegiao };
+      }
+    }
+  }
+
+  // Nivel 4: Nacional (score 80)
+  return { score: 80, tipo_local: 'nacional', label_local: '🌎 Nacional', location: 'Brasil' };
+}
+
+// ============================================================
+// FONTE 1: APIFY - Facebook Groups (HIBRIDO)
 // ============================================================
 async function buscarFacebookGroups(query, location, nacional) {
   if (!APIFY_API_TOKEN) {
@@ -167,12 +215,12 @@ async function buscarFacebookGroups(query, location, nacional) {
     const grupos = GRUPOS_POR_NICHO[nicho] || GRUPOS_POR_NICHO.agro;
     
     if (grupos.length === 0) {
-      console.warn('Nenhum grupo cadastrado para nicho: ' + nicho);
+      console.warn('Nenhum grupo para nicho: ' + nicho);
       return [];
     }
 
     const modoBusca = nacional ? 'NACIONAL' : (location || 'BRASIL');
-    console.log('Facebook Groups (' + modoBusca + '): "' + query + '" - nicho: ' + nicho + ' - ' + grupos.length + ' grupos');
+    console.log('Facebook Groups (' + modoBusca + '): "' + query + '" - nicho: ' + nicho);
 
     const url = 'https://api.apify.com/v2/acts/' + ACTOR_ID + '/run-sync-get-dataset-items?token=' + APIFY_API_TOKEN;
 
@@ -184,8 +232,6 @@ async function buscarFacebookGroups(query, location, nacional) {
       viewOption: 'CHRONOLOGICAL'
     };
 
-    console.log('Payload Apify:', JSON.stringify(payloadApify).slice(0, 500));
-
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -194,19 +240,16 @@ async function buscarFacebookGroups(query, location, nacional) {
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Apify Facebook erro:', response.status, errText.slice(0, 800));
+      console.error('Apify erro:', response.status, errText.slice(0, 400));
       return [];
     }
 
     const data = await response.json();
     const posts = Array.isArray(data) ? data : [];
-    console.log('Facebook Groups: ' + posts.length + ' posts brutos');
-
-    if (posts.length > 0) {
-      console.log('Exemplo post[0]:', JSON.stringify(posts[0]).slice(0, 400));
-    }
+    console.log('Facebook: ' + posts.length + ' posts brutos');
 
     const keywordsNorm = KEYWORDS_COMPRA.map(normalizar);
+    const vendedorNorm = KEYWORDS_VENDEDOR.map(normalizar);
 
     const termosQuery = normalizar(query)
       .split(' ')
@@ -215,41 +258,32 @@ async function buscarFacebookGroups(query, location, nacional) {
                ['para', 'com', 'dos', 'das', 'de', 'da', 'do', 'em', 'comprador', 'pesagem'].indexOf(w) === -1; 
       });
 
-    console.log('Termos especificos da query:', termosQuery.join(', '));
-
-    const vendedorNorm = KEYWORDS_VENDEDOR.map(normalizar);
-
-    // 🎯 Extrair o termo PRINCIPAL da query (o mais específico)
-    // Ex: "balança para gado" → "balanca" (produto)
     const termoPrincipal = termosQuery[0] || '';
+    console.log('Termos query:', termosQuery.join(', '), '| Principal:', termoPrincipal);
 
+    // 🎯 Filtro + classificacao geografica
     const filtrados = posts
       .filter(function(post) {
         const texto = normalizar(post.text || post.message || post.postText || '');
         
-        // 1. Precisa ter frase COMPLETA de intenção (não apenas "comprar")
+        // 1. Precisa ter frase de intencao de compra
         const temIntencao = keywordsNorm.some(function(k) { return texto.indexOf(k) !== -1; });
         if (!temIntencao) return false;
         
-        // 2. 🚫 REJEITAR posts de vendedor
+        // 2. Rejeitar vendedores
         const temVendedor = vendedorNorm.some(function(v) { return texto.indexOf(v) !== -1; });
         if (temVendedor) return false;
         
-        // 3. 🎯 Precisa ter o TERMO PRINCIPAL da query (ex: "balanca")
-        if (termoPrincipal && texto.indexOf(termoPrincipal) === -1) {
-          return false;
-        }
+        // 3. Precisa ter o termo principal
+        if (termoPrincipal && texto.indexOf(termoPrincipal) === -1) return false;
         
         return true;
       })
-      
       .map(function(post) {
         const textoPost = post.text || post.message || post.postText || '';
-        const textoNorm = normalizar(textoPost);
         
-        const mencionaLocal = (!nacional && location)
-          ? textoNorm.indexOf(normalizar(location.split(',')[0])) !== -1
-          : false;
+        // Classifica localizacao
+        const geo = classificarLocalizacao(textoPost, location);
 
         const telefone = extrairTelefone(textoPost);
 
@@ -263,13 +297,9 @@ async function buscarFacebookGroups(query, location, nacional) {
 
         let dataPost = new Date().toISOString().split('T')[0];
         if (post.time) {
-          try {
-            dataPost = new Date(post.time).toISOString().split('T')[0];
-          } catch (e) {}
+          try { dataPost = new Date(post.time).toISOString().split('T')[0]; } catch (e) {}
         } else if (post.timestamp) {
-          try {
-            dataPost = new Date(post.timestamp * 1000).toISOString().split('T')[0];
-          } catch (e) {}
+          try { dataPost = new Date(post.timestamp * 1000).toISOString().split('T')[0]; } catch (e) {}
         }
 
         return {
@@ -278,27 +308,43 @@ async function buscarFacebookGroups(query, location, nacional) {
           source: 'Facebook Groups',
           sourceUrl: urlPost,
           intent: textoPost.substring(0, 400),
-          location: mencionaLocal ? location : 'Brasil',
+          location: geo.location,
+          tipo_local: geo.tipo_local,
+          label_local: geo.label_local,
           date: dataPost,
           contact: telefone || null,
-          score: mencionaLocal ? 98 : (nacional ? 90 : 95),
+          score: geo.score,
           tipo: 'buyer_intent',
           grupo: post.groupTitle || post.group || post.groupName || 'Grupo Facebook'
         };
       })
       .filter(function(p) { return p.sourceUrl && p.sourceUrl.indexOf('http') === 0; });
 
+    // 🎯 COMPORTAMENTO HIBRIDO
     if (!nacional && location) {
-      const regionais = filtrados.filter(function(p) { return p.score === 98; });
-      console.log('Facebook Groups: ' + regionais.length + ' regionais / ' + filtrados.length + ' total');
-      return regionais.length > 0 ? regionais : filtrados;
+      filtrados.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+
+      const regionais = filtrados.filter(function(p) { return p.tipo_local === 'cidade' || p.tipo_local === 'estado'; });
+      const regionaisFortes = filtrados.filter(function(p) { return p.tipo_local === 'cidade'; });
+
+      console.log('Facebook: ' + regionaisFortes.length + ' cidade / ' + regionais.length + ' estado / ' + filtrados.length + ' total');
+
+      // HIBRIDO: se 3+ na cidade, retorna SO eles
+      if (regionaisFortes.length >= 3) {
+        console.log('🎯 Modo RIGOROSO: ' + regionaisFortes.length + ' leads em ' + location);
+        return regionaisFortes;
+      }
+
+      // Senao, retorna TUDO (regionais + nacionais) com badges
+      console.log('🌎 Modo HIBRIDO: regionais + nacionais (badges)');
+      return filtrados;
     }
 
-    console.log('Facebook Groups: ' + filtrados.length + ' com intencao');
+    filtrados.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
     return filtrados;
 
   } catch (err) {
-    console.error('Erro Apify:', err.message, err.stack);
+    console.error('Erro Apify:', err.message);
     return [];
   }
 }
@@ -313,9 +359,6 @@ async function buscarSerper(query, location, nacional) {
     const q = (!nacional && location)
       ? '"quero comprar" OR "onde compro" "' + query + '" ' + location
       : '"quero comprar" OR "onde compro" "' + query + '"';
-
-    const modoBusca = nacional ? 'NACIONAL' : (location || 'BRASIL');
-    console.log('Serper (' + modoBusca + '): "' + q + '"');
 
     const response = await fetch('https://google.serper.dev/search', {
       method: 'POST',
@@ -332,6 +375,7 @@ async function buscarSerper(query, location, nacional) {
     return organic.map(function(item) {
       const snippet = item.snippet || '';
       const telefone = extrairTelefone(snippet);
+      const geo = classificarLocalizacao(snippet, location);
       
       return {
         name: item.title || 'Mencao',
@@ -339,10 +383,12 @@ async function buscarSerper(query, location, nacional) {
         source: item.displayLink || 'Google Search',
         sourceUrl: item.link || '',
         intent: snippet,
-        location: (!nacional && location) ? location : 'Brasil',
+        location: geo.location,
+        tipo_local: geo.tipo_local,
+        label_local: geo.label_local,
         date: new Date().toISOString().split('T')[0],
         contact: telefone || null,
-        score: nacional ? 65 : 70,
+        score: geo.score - 15,
         tipo: 'search_result',
         grupo: 'Google'
       };
@@ -354,7 +400,7 @@ async function buscarSerper(query, location, nacional) {
 }
 
 // ============================================================
-// FONTE 3: GEMINI + Google Search
+// FONTE 3: GEMINI
 // ============================================================
 async function buscarGemini(query, location, nacional) {
   if (!GEMINI_API_KEY) return [];
@@ -362,7 +408,7 @@ async function buscarGemini(query, location, nacional) {
   try {
     const localTexto = (!nacional && location) ? ' em ' + location : ' no Brasil';
     
-    const prompt = 'Voce e um rastreador de INTENCAO DE COMPRA. Busque na web mencoes publicas de pessoas procurando comprar "' + query + '"' + localTexto + '.\n\nREGRAS:\n- Retorne APENAS compradores (quem quer comprar, procura, pergunta onde encontrar)\n- NAO retorne lojas, e-commerce, catalogos, fabricantes\n- Priorize: Facebook, foruns, Reddit, Instagram, Twitter/X\n\nFORMATO (retorne APENAS array JSON, sem markdown):\n[{"name": "nome ou Comprador", "source": "site", "sourceUrl": "URL completa", "intent": "trecho exato da mencao", "location": "cidade/estado", "phone": "telefone se visivel no texto", "date": "AAAA-MM-DD", "score": 80}]\n\nSe nao achar nada, retorne: []';
+    const prompt = 'Voce e um rastreador de INTENCAO DE COMPRA. Busque na web mencoes publicas de pessoas procurando comprar "' + query + '"' + localTexto + '.\n\nREGRAS:\n- Retorne APENAS compradores (quem quer comprar, procura, pergunta onde encontrar)\n- NAO retorne lojas, e-commerce, catalogos, fabricantes\n- Priorize: Facebook, foruns, Reddit, Instagram, Twitter/X\n\nFORMATO (retorne APENAS array JSON):\n[{"name": "nome", "source": "site", "sourceUrl": "URL", "intent": "trecho", "location": "cidade/estado", "phone": "telefone se visivel", "date": "AAAA-MM-DD", "score": 80}]\n\nSe nao achar nada, retorne: []';
 
     const response = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GEMINI_API_KEY,
@@ -400,16 +446,19 @@ async function buscarGemini(query, location, nacional) {
       .filter(function(r) { return r.sourceUrl && r.sourceUrl.indexOf('http') === 0; })
       .map(function(r) {
         const telefone = r.phone || extrairTelefone(r.intent || '');
+        const geo = classificarLocalizacao(r.intent || '', location);
         return {
           name: r.name || 'Comprador',
           phone: telefone || '',
           source: r.source || 'Gemini',
           sourceUrl: r.sourceUrl || '',
           intent: r.intent || '',
-          location: r.location || ((!nacional && location) ? location : 'Brasil'),
+          location: geo.location,
+          tipo_local: geo.tipo_local,
+          label_local: geo.label_local,
           date: r.date || new Date().toISOString().split('T')[0],
           contact: telefone || null,
-          score: nacional ? 75 : 80,
+          score: geo.score - 10,
           tipo: 'buyer_intent',
           grupo: 'Gemini'
         };
@@ -435,45 +484,34 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  console.log('=== Handler iniciado ===');
-  console.log('Method:', req.method);
-  console.log('Content-Type:', req.headers['content-type']);
-
-  // 🎯 LER BODY (robusto)
   const body = await lerBodyRaw(req);
-
   const query = body.query || '';
   const location = body.location || '';
   const count = body.count || 20;
 
-  console.log('Query extraida:', query);
-  console.log('Location:', location);
-
   if (!query) return res.status(400).json({ error: 'Forneca o que deseja rastrear.' });
 
   try {
-    console.log('===== B2C v13: "' + query + '" em ' + (location || 'Brasil') + ' =====');
+    console.log('===== B2C v15: "' + query + '" em ' + (location || 'Brasil') + ' =====');
 
     let todos = [];
-    let modoUsado = 'nacional';
+    let modoUsado = 'regional';
 
-    if (location && location.trim()) {
-      console.log('FASE 1: Regional em ' + location);
-      
-      const resultados = await Promise.all([
-        buscarFacebookGroups(query, location, false),
-        buscarSerper(query, location, false),
-        buscarGemini(query, location, false)
-      ]);
+    // FASE 1: Busca (regional se location, senao nacional)
+    const resultados = await Promise.all([
+      buscarFacebookGroups(query, location, !location),
+      buscarSerper(query, location, !location),
+      buscarGemini(query, location, !location)
+    ]);
 
-      todos = [].concat(resultados[0], resultados[2], resultados[1]);
-      modoUsado = 'regional';
+    todos = [].concat(resultados[0], resultados[2], resultados[1]);
 
-      console.log('Regional: ' + todos.length + ' leads');
-    }
+    // FASE 2: Fallback nacional se poucos resultados E tinha location
+    const cidadeLeads = todos.filter(function(l) { return l.tipo_local === 'cidade'; });
 
-    if (todos.length < 5) {
-      console.log('Fallback NACIONAL...');
+    if (location && cidadeLeads.length < 3 && todos.length < 5) {
+      console.log('Fallback NACIONAL adicional...');
+      modoUsado = 'regional + nacional';
 
       const resultadosNac = await Promise.all([
         buscarFacebookGroups(query, '', true),
@@ -481,18 +519,10 @@ export default async function handler(req, res) {
         buscarGemini(query, '', true)
       ]);
 
-      const todosNacional = [].concat(resultadosNac[0], resultadosNac[2], resultadosNac[1]);
-      console.log('Nacional: ' + todosNacional.length + ' leads');
-
-      if (todos.length > 0) {
-        todos = todos.concat(todosNacional);
-        modoUsado = 'regional + nacional';
-      } else {
-        todos = todosNacional;
-        modoUsado = 'nacional';
-      }
+      todos = todos.concat(resultadosNac[0], resultadosNac[2], resultadosNac[1]);
     }
 
+    // Deduplicar
     const vistos = {};
     const unicos = todos.filter(function(item) {
       if (!item.sourceUrl || vistos[item.sourceUrl]) return false;
@@ -500,28 +530,35 @@ export default async function handler(req, res) {
       return true;
     });
 
+    // Ordenar por score
     unicos.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
 
-    const resultados = unicos.slice(0, count);
-    const comTelefone = resultados.filter(function(r) { return r.phone; }).length;
+    const resultadosFinais = unicos.slice(0, count);
+    const comTelefone = resultadosFinais.filter(function(r) { return r.phone; }).length;
+    const daCidade = resultadosFinais.filter(function(r) { return r.tipo_local === 'cidade'; }).length;
+    const doEstado = resultadosFinais.filter(function(r) { return r.tipo_local === 'estado'; }).length;
+    const nacionais = resultadosFinais.filter(function(r) { return r.tipo_local === 'nacional'; }).length;
 
-    const fontes = {
-      facebook_groups: resultados.filter(function(r) { return r.source === 'Facebook Groups'; }).length,
-      serper: resultados.filter(function(r) { return r.source.indexOf('Google') !== -1; }).length,
-      gemini: resultados.filter(function(r) { return r.source === 'Gemini'; }).length,
-      com_telefone: comTelefone
-    };
-
-    console.log('===== Finalizado: ' + resultados.length + ' leads (' + comTelefone + ' com tel) =====');
+    console.log('Finalizado: ' + resultadosFinais.length + ' leads (cidade:' + daCidade + ', estado:' + doEstado + ', nacional:' + nacionais + ')');
 
     res.status(200).json({
-      leads: resultados,
+      leads: resultadosFinais,
       meta: {
         intent: 'b2c_buyer_intent',
-        summary: resultados.length + ' leads para "' + query + '"' + (location ? ' em ' + location : '') + ' (modo: ' + modoUsado + '). ' + comTelefone + ' com telefone.',
+        summary: resultadosFinais.length + ' leads para "' + query + '"' + (location ? ' em ' + location : '') + '. ' + comTelefone + ' com telefone. ' + daCidade + ' na cidade, ' + doEstado + ' no estado, ' + nacionais + ' nacionais.',
         targetAudience: 'Pessoas com intencao de compra',
         modo_busca: modoUsado,
-        fontes_utilizadas: fontes,
+        resumo_geografico: {
+          cidade: daCidade,
+          estado: doEstado,
+          nacional: nacionais,
+          com_telefone: comTelefone
+        },
+        fontes_utilizadas: {
+          facebook_groups: resultadosFinais.filter(function(r) { return r.source === 'Facebook Groups'; }).length,
+          serper: resultadosFinais.filter(function(r) { return r.source.indexOf('Google') !== -1; }).length,
+          gemini: resultadosFinais.filter(function(r) { return r.source === 'Gemini'; }).length
+        },
         total_antes_deduplicacao: todos.length
       }
     });
