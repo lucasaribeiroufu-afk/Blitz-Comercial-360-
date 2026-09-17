@@ -34,11 +34,14 @@ const GRUPOS_POR_NICHO = {
 };
 
 const KEYWORDS_COMPRA = [
-  'quero comprar', 'onde compro', 'onde encontro', 'procuro',
-  'procurando', 'preciso de', 'indicacao', 'indica',
-  'alguem indica', 'me indica', 'estou buscando', 'quero adquirir',
-  'qual melhor', 'me ajudem a encontrar', 'estou procurando',
-  'comprar', 'compro', 'a venda', 'venda', 'valor', 'preco'
+  'quero comprar', 'quero adquirir', 'estou procurando', 'estou buscando',
+  'onde compro', 'onde encontro', 'onde acho',
+  'procuro por', 'estou a procura', 'a procura de',
+  'preciso de', 'preciso comprar', 'necessito de',
+  'indicacao de', 'indica pra mim', 'alguem indica', 'me indica',
+  'qual melhor', 'me ajudem a encontrar', 'conhece alguem que vende',
+  'alguem tem para vender', 'alguem sabe onde', 'sabe onde encontro',
+  'to precisando', 'estou precisando'
 ];
 
 function normalizar(s) {
