@@ -1,8 +1,7 @@
 // ============================================================
-// CEREBRO B2C v15: Radar de Intencao de Compra MULTI-NICHO
-// Comportamento HIBRIDO: 3+ regionais = so regionais
-//                        <3 regionais = regionais + nacionais com badges
-// Fontes: Apify (Facebook Groups OFICIAL) + Serper + Gemini
+// CEREBRO B2C v16: PROSPECCAO ATIVA Multi-nicho
+// Estrategia: encontrar CONTATOS ATUANTES no mercado (nao so compradores)
+// Fontes: Apify (Facebook Groups) + Serper + Gemini
 // ============================================================
 
 const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
@@ -12,7 +11,7 @@ const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const ACTOR_ID = 'apify~facebook-groups-scraper';
 
 // ============================================================
-// GRUPOS CADASTRADOS POR NICHO
+// GRUPOS POR NICHO
 // ============================================================
 const GRUPOS_POR_NICHO = {
   agro: [
@@ -34,29 +33,43 @@ const GRUPOS_POR_NICHO = {
   eletronicos: []
 };
 
-// Palavras-chave de intencao de compra (frases completas)
-const KEYWORDS_COMPRA = [
-  'quero comprar', 'quero adquirir', 'estou procurando', 'estou buscando',
-  'onde compro', 'onde encontro', 'onde acho',
-  'procuro por', 'estou a procura', 'a procura de',
-  'preciso de', 'preciso comprar', 'necessito de',
-  'indicacao de', 'indica pra mim', 'alguem indica', 'me indica',
-  'qual melhor', 'me ajudem a encontrar', 'conhece alguem que vende',
-  'alguem tem para vender', 'alguem sabe onde', 'sabe onde encontro',
-  'to precisando', 'estou precisando'
+// 🎯 Palavras que indicam ATUACAO no mercado (nao apenas compra)
+const PALAVRAS_ATUACAO = [
+  // Agro/pecuaria
+  'gado', 'boi', 'vaca', 'novilha', 'bezerro', 'touro', 'matriz', 'reprodutor',
+  'pecuaria', 'pecuarista', 'fazenda', 'sitio', 'chacara', 'rancho', 'estancia',
+  'bovino', 'rebanho', 'criacao', 'engorda', 'confinamento', 'pastagem', 'pasto',
+  'leite', 'leiteiro', 'ordenha', 'corte', 'abate', 'frigorifico',
+  'racao', 'suplemento', 'sal mineral', 'premix', 'nutricao animal',
+  'inseminacao', 'prenhez', 'leilao', 'arremate', 'lance',
+  // Agricola
+  'soja', 'milho', 'cafe', 'cana', 'sorgo', 'arroz', 'feijao',
+  'plantio', 'safra', 'colheita', 'lavoura', 'agricola', 'agricultor',
+  'fertilizante', 'adubo', 'defensivo', 'herbicida', 'fungicida',
+  // Casa/decoracao
+  'casa', 'decoracao', 'movel', 'sofa', 'mesa', 'cadeira', 'cozinha',
+  // Moda
+  'moda', 'roupa', 'vestido', 'blusa', 'calca', 'sapato', 'bolsa',
+  // Eletronicos
+  'celular', 'notebook', 'tablet', 'tv', 'eletrodomestico', 'geladeira'
 ];
 
-// Palavras que indicam VENDEDOR (excluir)
-const KEYWORDS_VENDEDOR = [
-  'a venda', 'vende-se', 'vendo ', 'vendemos',
-  'oportunidade de investimento', 'excelente oportunidade',
-  'fazenda a venda', 'fazenda para venda', 'sitio a venda',
-  'terreno a venda', 'area a venda', 'propriedade a venda',
-  'leilao', 'lance inicial', 'avaliacao',
-  'catalogo', 'tabela de preco', 'consulte valores', 'sob consulta'
+// 🚫 Palavras que indicam SPAM (rejeitar)
+const PALAVRAS_SPAM = [
+  'advogado', 'advocacia', 'oab', 'cobranca', 'execucao', 'divida',
+  'emprestimo', 'financiamento imobiliario', 'consorcio',
+  'bitcoin', 'cripto', 'investimento garantido', 'renda extra',
+  'curso online', 'e-book', 'ebook', 'mentoria', 'consultoria gratuita'
 ];
 
-// Mapa de regioes brasileiras
+// 🚫 Palavras que indicam VENDEDOR profissional (rejeitar)
+const PALAVRAS_VENDEDOR_PRO = [
+  'loja oficial', 'site oficial', 'compre em nossa loja',
+  'catalogo completo', 'tabela de precos', 'atacado e varejo',
+  'entregamos em todo brasil', 'frete gratis acima', 'parcelamos em',
+  'aceitamos cartao', 'pix com desconto', 'representante oficial'
+];
+
 const REGIAO_POR_ESTADO = {
   mg: 'sudeste', sp: 'sudeste', rj: 'sudeste', es: 'sudeste',
   pr: 'sul', sc: 'sul', rs: 'sul',
@@ -97,68 +110,37 @@ function extrairTelefone(texto) {
 
 function detectarNicho(query) {
   const q = normalizar(query);
-  
   if (q.indexOf('gado') !== -1 || q.indexOf('balanca') !== -1 || 
       q.indexOf('bovino') !== -1 || q.indexOf('pecuar') !== -1 ||
       q.indexOf('racao') !== -1 || q.indexOf('fazenda') !== -1 ||
       q.indexOf('boi') !== -1 || q.indexOf('vaca') !== -1 ||
-      q.indexOf('leite') !== -1 || q.indexOf('corte') !== -1) {
-    return 'agro';
-  }
+      q.indexOf('leite') !== -1 || q.indexOf('corte') !== -1) return 'agro';
   if (q.indexOf('casa') !== -1 || q.indexOf('achadinho') !== -1 ||
-      q.indexOf('utensilio') !== -1 || q.indexOf('decoracao') !== -1) {
-    return 'casa';
-  }
+      q.indexOf('utensilio') !== -1 || q.indexOf('decoracao') !== -1) return 'casa';
   if (q.indexOf('moda') !== -1 || q.indexOf('vestido') !== -1 ||
-      q.indexOf('roupa') !== -1 || q.indexOf('feminin') !== -1) {
-    return 'moda';
-  }
+      q.indexOf('roupa') !== -1 || q.indexOf('feminin') !== -1) return 'moda';
   if (q.indexOf('fertilizante') !== -1 || q.indexOf('adubo') !== -1 ||
-      q.indexOf('defensivo') !== -1 || q.indexOf('agricola') !== -1) {
-    return 'agricola';
-  }
+      q.indexOf('defensivo') !== -1 || q.indexOf('agricola') !== -1) return 'agricola';
   if (q.indexOf('eletron') !== -1 || q.indexOf('celular') !== -1 ||
-      q.indexOf('iphone') !== -1 || q.indexOf('ventilador') !== -1) {
-    return 'eletronicos';
-  }
-  
+      q.indexOf('iphone') !== -1 || q.indexOf('ventilador') !== -1) return 'eletronicos';
   return 'agro';
 }
 
-// ============================================================
-// LER BODY RAW (fix para Vercel)
-// ============================================================
 async function lerBodyRaw(req) {
   if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
-    console.log('Body parseado:', JSON.stringify(req.body).slice(0, 200));
     return req.body;
   }
-
   if (req.body && typeof req.body === 'string') {
-    try {
-      const parsed = JSON.parse(req.body);
-      console.log('Body string parseado:', JSON.stringify(parsed).slice(0, 200));
-      return parsed;
-    } catch (e) {
-      console.error('Erro parse string:', e.message);
-    }
+    try { return JSON.parse(req.body); } catch (e) {}
   }
-
   try {
     const chunks = [];
     for await (const chunk of req) {
       chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
     }
     const rawBody = Buffer.concat(chunks).toString('utf8');
-    console.log('Body RAW:', rawBody.slice(0, 300));
-    
-    if (rawBody) {
-      return JSON.parse(rawBody);
-    }
-  } catch (e) {
-    console.error('Erro stream raw:', e.message);
-  }
-
+    if (rawBody) return JSON.parse(rawBody);
+  } catch (e) {}
   return {};
 }
 
@@ -167,24 +149,21 @@ async function lerBodyRaw(req) {
 // ============================================================
 function classificarLocalizacao(texto, location) {
   if (!location) {
-    return { score: 80, tipo_local: 'nacional', label_local: '🌎 Nacional', location: 'Brasil' };
+    return { score: 60, tipo_local: 'nacional', label_local: '🌎 Nacional', location: 'Brasil' };
   }
 
   const textoNorm = normalizar(texto);
-  const cidadeAlvo = normalizar(location.split(',')[0]);            // "uberlandia"
-  const estadoAlvo = normalizar((location.split(',')[1] || '').trim()); // "mg"
+  const cidadeAlvo = normalizar(location.split(',')[0]);
+  const estadoAlvo = normalizar((location.split(',')[1] || '').trim());
   
-  // Nivel 1: Menciona a CIDADE (score 98)
   if (cidadeAlvo && textoNorm.indexOf(cidadeAlvo) !== -1) {
-    return { score: 98, tipo_local: 'cidade', label_local: '📍 ' + location, location: location };
+    return { score: 90, tipo_local: 'cidade', label_local: '📍 ' + location, location: location };
   }
 
-  // Nivel 2: Menciona o ESTADO (score 92)
   if (estadoAlvo && estadoAlvo.length >= 2 && textoNorm.indexOf(' ' + estadoAlvo + ' ') !== -1) {
-    return { score: 92, tipo_local: 'estado', label_local: '🏛️ ' + estadoAlvo.toUpperCase(), location: 'Estado: ' + estadoAlvo.toUpperCase() };
+    return { score: 80, tipo_local: 'estado', label_local: '🏛️ ' + estadoAlvo.toUpperCase(), location: 'Estado: ' + estadoAlvo.toUpperCase() };
   }
 
-  // Nivel 3: Menciona a REGIAO (score 88)
   const minhaRegiao = REGIAO_POR_ESTADO[estadoAlvo] || '';
   if (minhaRegiao) {
     const estadosRegiao = Object.keys(REGIAO_POR_ESTADO).filter(function(e) {
@@ -192,17 +171,50 @@ function classificarLocalizacao(texto, location) {
     });
     for (const est of estadosRegiao) {
       if (textoNorm.indexOf(' ' + est + ' ') !== -1) {
-        return { score: 88, tipo_local: 'regiao', label_local: '🗺️ Regiao ' + minhaRegiao, location: 'Regiao ' + minhaRegiao };
+        return { score: 70, tipo_local: 'regiao', label_local: '🗺️ Regiao ' + minhaRegiao, location: 'Regiao ' + minhaRegiao };
       }
     }
   }
 
-  // Nivel 4: Nacional (score 80)
-  return { score: 80, tipo_local: 'nacional', label_local: '🌎 Nacional', location: 'Brasil' };
+  return { score: 60, tipo_local: 'nacional', label_local: '🌎 Nacional', location: 'Brasil' };
 }
 
 // ============================================================
-// FONTE 1: APIFY - Facebook Groups (HIBRIDO)
+// SCORE DE ATUACAO (nivel de atividade no mercado)
+// ============================================================
+function calcularScoreAtuacao(texto) {
+  const textoNorm = normalizar(texto);
+  let score = 0;
+  let matches = 0;
+
+  // 1. Menções a palavras de atuação (agro/pecuaria)
+  PALAVRAS_ATUACAO.forEach(function(p) {
+    if (textoNorm.indexOf(normalizar(p)) !== -1) {
+      matches++;
+    }
+  });
+
+  // 2. Post longo (>150 chars) = engajamento
+  if (texto.length > 150) score += 10;
+  if (texto.length > 300) score += 5;
+
+  // 3. Menciona números específicos (quantidade, preço, data)
+  if (/\d+\s*(cabe[cç]as?|hectares?|alqueires?|kg|toneladas?|reais|r\$)/i.test(texto)) score += 15;
+
+  // 4. Menção a leilão/venda/compra em quantidade
+  if (/(leil[aã]o|arremat|lance|comprar|vender|negociar)/i.test(texto)) score += 10;
+
+  // 5. Menção a cidade/estado específico
+  if (/(uberl[aâ]ndia|minas|goi[aá]s|mato grosso|paran[aá]|s[aã]o paulo|bahia)/i.test(texto)) score += 5;
+
+  // 6. Pontuação por palavras de atuação
+  score += Math.min(matches * 3, 30);
+
+  return Math.min(score, 50);
+}
+
+// ============================================================
+// FONTE 1: APIFY - Facebook Groups (PROSPECCAO ATIVA)
 // ============================================================
 async function buscarFacebookGroups(query, location, nacional) {
   if (!APIFY_API_TOKEN) {
@@ -219,28 +231,25 @@ async function buscarFacebookGroups(query, location, nacional) {
       return [];
     }
 
-    const modoBusca = nacional ? 'NACIONAL' : (location || 'BRASIL');
-    console.log('Facebook Groups (' + modoBusca + '): "' + query + '" - nicho: ' + nicho);
+    console.log('Facebook Groups: "' + query + '" - nicho: ' + nicho);
 
     const url = 'https://api.apify.com/v2/acts/' + ACTOR_ID + '/run-sync-get-dataset-items?token=' + APIFY_API_TOKEN;
-
-    const payloadApify = {
-      startUrls: grupos,
-      maxPosts: 30,
-      maxComments: 0,
-      onlyPostsNewerThan: '1 month',
-      viewOption: 'CHRONOLOGICAL'
-    };
 
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payloadApify)
+      body: JSON.stringify({
+        startUrls: grupos,
+        maxPosts: 30,
+        maxComments: 0,
+        onlyPostsNewerThan: '2 months',
+        viewOption: 'CHRONOLOGICAL'
+      })
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Apify erro:', response.status, errText.slice(0, 400));
+      console.error('Apify erro:', response.status, errText.slice(0, 300));
       return [];
     }
 
@@ -248,51 +257,59 @@ async function buscarFacebookGroups(query, location, nacional) {
     const posts = Array.isArray(data) ? data : [];
     console.log('Facebook: ' + posts.length + ' posts brutos');
 
-    const keywordsNorm = KEYWORDS_COMPRA.map(normalizar);
-    const vendedorNorm = KEYWORDS_VENDEDOR.map(normalizar);
-
+    const atuacaoNorm = PALAVRAS_ATUACAO.map(normalizar);
+    const spamNorm = PALAVRAS_SPAM.map(normalizar);
+    const vendProNorm = PALAVRAS_VENDEDOR_PRO.map(normalizar);
+    
+    // Termo específico da query (se houver)
     const termosQuery = normalizar(query)
       .split(' ')
-      .filter(function(w) { 
-        return w.length > 3 && 
-               ['para', 'com', 'dos', 'das', 'de', 'da', 'do', 'em', 'comprador', 'pesagem'].indexOf(w) === -1; 
-      });
+      .filter(function(w) { return w.length > 3 && ['para', 'com', 'dos', 'das', 'de', 'da', 'do', 'em'].indexOf(w) === -1; });
 
-    const termoPrincipal = termosQuery[0] || '';
-    console.log('Termos query:', termosQuery.join(', '), '| Principal:', termoPrincipal);
-
-    // 🎯 Filtro + classificacao geografica (com pontuacao por relevancia)
+    // 🎯 FILTRO: aceita ATUANTES, rejeita SPAM e VENDEDORES PROFISSIONAIS
     const filtrados = posts
       .filter(function(post) {
         const texto = normalizar(post.text || post.message || post.postText || '');
         
-        // 1. Precisa ter frase de intencao de compra
-        const temIntencao = keywordsNorm.some(function(k) { return texto.indexOf(k) !== -1; });
-        if (!temIntencao) return false;
+        if (texto.length < 20) return false; // muito curto
         
-        // 2. Rejeitar vendedores
-        const temVendedor = vendedorNorm.some(function(v) { return texto.indexOf(v) !== -1; });
-        if (temVendedor) return false;
+        // 🚫 Rejeitar SPAM
+        const isSpam = spamNorm.some(function(k) { return texto.indexOf(k) !== -1; });
+        if (isSpam) return false;
         
-        // 3. NÃO rejeitar se faltar termo — apenas pontuar diferente
+        // 🚫 Rejeitar VENDEDOR PROFISSIONAL
+        const isVendPro = vendProNorm.some(function(k) { return texto.indexOf(k) !== -1; });
+        if (isVendPro) return false;
+        
+        // ✅ Precisa ter ATUACAO no mercado (agro, casa, moda, etc)
+        const temAtuacao = atuacaoNorm.some(function(k) { return texto.indexOf(k) !== -1; });
+        if (!temAtuacao) return false;
+        
         return true;
       })
       .map(function(post) {
         const textoPost = post.text || post.message || post.postText || '';
         
-        // Classifica localizacao
+        // Geolocalização
         const geo = classificarLocalizacao(textoPost, location);
-
+        
+        // Score de atuação (0-50)
+        const scoreAtuacao = calcularScoreAtuacao(textoPost);
+        
+        // Telefone
         const telefone = extrairTelefone(textoPost);
-
+        
+        // Nome do autor
         const nomeAutor = (post.user && post.user.name) || 
                           (post.author && post.author.name) || 
                           post.authorName || 
                           post.userName ||
-                          'Comprador';
+                          'Contato';
 
+        // URL
         const urlPost = post.url || post.postUrl || post.facebookUrl || post.link || '';
-
+        
+        // Data
         let dataPost = new Date().toISOString().split('T')[0];
         if (post.time) {
           try { dataPost = new Date(post.time).toISOString().split('T')[0]; } catch (e) {}
@@ -300,58 +317,36 @@ async function buscarFacebookGroups(query, location, nacional) {
           try { dataPost = new Date(post.timestamp * 1000).toISOString().split('T')[0]; } catch (e) {}
         }
 
-    // 🎯 Pontuacao por relevancia (bonus se tiver termo principal)
-        const textoNorm = normalizar(textoPost);
-        const temTermoPrincipal = termoPrincipal && textoNorm.indexOf(termoPrincipal) !== -1;
-        const temTodosTermos = termosQuery.every(function(t) { return textoNorm.indexOf(t) !== -1; });
-        const temAlgumTermo = termosQuery.some(function(t) { return textoNorm.indexOf(t) !== -1; });
-
-        let bonusRelevancia = 0;
-        if (temTodosTermos) bonusRelevancia = 15;        // Post perfeito (+15)
-        else if (temTermoPrincipal) bonusRelevancia = 10; // Tem o produto específico (+10)
-        else if (temAlgumTermo) bonusRelevancia = 5;      // Tem contexto (+5)
-        else bonusRelevancia = -10;                       // Só intenção, sem contexto (-10)
+        // 🎯 SCORE FINAL = Geo (0-90) + Atuacao (0-50) + Telefone bonus (0-10)
+        let scoreFinal = geo.score + scoreAtuacao;
+        if (telefone) scoreFinal += 10;
+        if (nomeAutor && nomeAutor !== 'Contato') scoreFinal += 5;
 
         return {
           name: nomeAutor,
           phone: telefone || '',
           source: 'Facebook Groups',
           sourceUrl: urlPost,
-          intent: textoPost.substring(0, 400),
+          intent: textoPost.substring(0, 500),
           location: geo.location,
           tipo_local: geo.tipo_local,
           label_local: geo.label_local,
           date: dataPost,
           contact: telefone || null,
-          score: Math.min(100, geo.score + bonusRelevancia),
-          relevancia: temTodosTermos ? 'perfeita' : (temTermoPrincipal ? 'alta' : (temAlgumTermo ? 'media' : 'baixa')),
-          tipo: 'buyer_intent',
-          grupo: post.groupTitle || post.group || post.groupName || 'Grupo Facebook'
+          score: Math.min(scoreFinal, 100),
+          score_atuacao: scoreAtuacao,
+          tem_telefone: !!telefone,
+          tipo: 'active_contact',
+          grupo: post.groupTitle || post.group || post.groupName || 'Grupo Facebook',
+          observacao: 'Contato atuante no mercado - prospectar com link do site'
         };
       })
       .filter(function(p) { return p.sourceUrl && p.sourceUrl.indexOf('http') === 0; });
 
-    // 🎯 COMPORTAMENTO HIBRIDO
-    if (!nacional && location) {
-      filtrados.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
-
-      const regionais = filtrados.filter(function(p) { return p.tipo_local === 'cidade' || p.tipo_local === 'estado'; });
-      const regionaisFortes = filtrados.filter(function(p) { return p.tipo_local === 'cidade'; });
-
-      console.log('Facebook: ' + regionaisFortes.length + ' cidade / ' + regionais.length + ' estado / ' + filtrados.length + ' total');
-
-      // HIBRIDO: se 3+ na cidade, retorna SO eles
-      if (regionaisFortes.length >= 3) {
-        console.log('🎯 Modo RIGOROSO: ' + regionaisFortes.length + ' leads em ' + location);
-        return regionaisFortes;
-      }
-
-      // Senao, retorna TUDO (regionais + nacionais) com badges
-      console.log('🌎 Modo HIBRIDO: regionais + nacionais (badges)');
-      return filtrados;
-    }
-
     filtrados.sort(function(a, b) { return (b.score || 0) - (a.score || 0); });
+
+    const comTel = filtrados.filter(function(p) { return p.phone; }).length;
+    console.log('Facebook: ' + filtrados.length + ' contatos atuantes (' + comTel + ' com tel)');
     return filtrados;
 
   } catch (err) {
@@ -361,15 +356,15 @@ async function buscarFacebookGroups(query, location, nacional) {
 }
 
 // ============================================================
-// FONTE 2: SERPER.DEV
+// FONTE 2: SERPER.DEV (busca mencoes de atuacao)
 // ============================================================
 async function buscarSerper(query, location, nacional) {
   if (!SERPER_API_KEY) return [];
 
   try {
     const q = (!nacional && location)
-      ? '"quero comprar" OR "onde compro" "' + query + '" ' + location
-      : '"quero comprar" OR "onde compro" "' + query + '"';
+      ? '"pecuarista" OR "criador de gado" OR "fazendeiro" ' + location
+      : '"pecuarista" OR "criador de gado" OR "fazendeiro"';
 
     const response = await fetch('https://google.serper.dev/search', {
       method: 'POST',
@@ -399,9 +394,12 @@ async function buscarSerper(query, location, nacional) {
         label_local: geo.label_local,
         date: new Date().toISOString().split('T')[0],
         contact: telefone || null,
-        score: geo.score - 15,
-        tipo: 'search_result',
-        grupo: 'Google'
+        score: Math.max(geo.score - 20, 30),
+        score_atuacao: 10,
+        tem_telefone: !!telefone,
+        tipo: 'active_contact',
+        grupo: 'Google',
+        observacao: 'Contato atuante - prospectar'
       };
     });
   } catch (err) {
@@ -419,7 +417,7 @@ async function buscarGemini(query, location, nacional) {
   try {
     const localTexto = (!nacional && location) ? ' em ' + location : ' no Brasil';
     
-    const prompt = 'Voce e um rastreador de INTENCAO DE COMPRA. Busque na web mencoes publicas de pessoas procurando comprar "' + query + '"' + localTexto + '.\n\nREGRAS:\n- Retorne APENAS compradores (quem quer comprar, procura, pergunta onde encontrar)\n- NAO retorne lojas, e-commerce, catalogos, fabricantes\n- Priorize: Facebook, foruns, Reddit, Instagram, Twitter/X\n\nFORMATO (retorne APENAS array JSON):\n[{"name": "nome", "source": "site", "sourceUrl": "URL", "intent": "trecho", "location": "cidade/estado", "phone": "telefone se visivel", "date": "AAAA-MM-DD", "score": 80}]\n\nSe nao achar nada, retorne: []';
+    const prompt = 'Voce e um prospector B2B. Encontre CONTATOS ATUANTES no mercado agro/pecuario' + localTexto + ' que publiquem sobre: gado, fazenda, pecuaria, leilao, criacao, etc.\n\nNAO busque compradores. Busque PESSOAS ATUANTES do setor (produtores, criadores, fazendeiros, gestores rurais).\n\nFORMATO (array JSON):\n[{"name": "nome", "source": "site", "sourceUrl": "URL", "intent": "trecho", "location": "cidade/estado", "phone": "telefone se visivel", "date": "AAAA-MM-DD", "score": 60}]\n\nSe nao achar nada, retorne: []';
 
     const response = await fetch(
       'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=' + GEMINI_API_KEY,
@@ -441,10 +439,7 @@ async function buscarGemini(query, location, nacional) {
     if (!text) return [];
 
     let jsonText = text.trim()
-      .replace(/^```json\s*/i, '')
-      .replace(/^```\s*/i, '')
-      .replace(/\s*```$/i, '')
-      .trim();
+      .replace(/^```json\s*/i, '').replace(/^```\s*/i, '').replace(/\s*```$/i, '').trim();
 
     const arrayMatch = jsonText.match(/\[[\s\S]*\]/);
     if (!arrayMatch) return [];
@@ -453,13 +448,13 @@ async function buscarGemini(query, location, nacional) {
     try { resultados = JSON.parse(arrayMatch[0]); } catch (e) { return []; }
     if (!Array.isArray(resultados)) return [];
 
-    const leads = resultados
+    return resultados
       .filter(function(r) { return r.sourceUrl && r.sourceUrl.indexOf('http') === 0; })
       .map(function(r) {
         const telefone = r.phone || extrairTelefone(r.intent || '');
         const geo = classificarLocalizacao(r.intent || '', location);
         return {
-          name: r.name || 'Comprador',
+          name: r.name || 'Contato',
           phone: telefone || '',
           source: r.source || 'Gemini',
           sourceUrl: r.sourceUrl || '',
@@ -469,14 +464,14 @@ async function buscarGemini(query, location, nacional) {
           label_local: geo.label_local,
           date: r.date || new Date().toISOString().split('T')[0],
           contact: telefone || null,
-          score: geo.score - 10,
-          tipo: 'buyer_intent',
-          grupo: 'Gemini'
+          score: Math.max(geo.score - 15, 35),
+          score_atuacao: 15,
+          tem_telefone: !!telefone,
+          tipo: 'active_contact',
+          grupo: 'Gemini',
+          observacao: 'Contato atuante - prospectar'
         };
       });
-
-    console.log('Gemini: ' + leads.length + ' mencoes');
-    return leads;
   } catch (err) {
     console.error('Erro Gemini:', err.message);
     return [];
@@ -498,42 +493,23 @@ export default async function handler(req, res) {
   const body = await lerBodyRaw(req);
   const query = body.query || '';
   const location = body.location || '';
-  const count = body.count || 20;
+  const count = body.count || 30;
 
   if (!query) return res.status(400).json({ error: 'Forneca o que deseja rastrear.' });
 
   try {
-    console.log('===== B2C v15: "' + query + '" em ' + (location || 'Brasil') + ' =====');
+    console.log('===== B2C v16 PROSPECCAO ATIVA: "' + query + '" em ' + (location || 'Brasil') + ' =====');
 
-    let todos = [];
-    let modoUsado = 'regional';
-
-    // FASE 1: Busca (regional se location, senao nacional)
+    // Busca sempre nacional (grupos já são nacionais)
     const resultados = await Promise.all([
       buscarFacebookGroups(query, location, !location),
       buscarSerper(query, location, !location),
       buscarGemini(query, location, !location)
     ]);
 
-    todos = [].concat(resultados[0], resultados[2], resultados[1]);
+    let todos = [].concat(resultados[0], resultados[2], resultados[1]);
 
-    // FASE 2: Fallback nacional se poucos resultados E tinha location
-    const cidadeLeads = todos.filter(function(l) { return l.tipo_local === 'cidade'; });
-
-    if (location && cidadeLeads.length < 3 && todos.length < 5) {
-      console.log('Fallback NACIONAL adicional...');
-      modoUsado = 'regional + nacional';
-
-      const resultadosNac = await Promise.all([
-        buscarFacebookGroups(query, '', true),
-        buscarSerper(query, '', true),
-        buscarGemini(query, '', true)
-      ]);
-
-      todos = todos.concat(resultadosNac[0], resultadosNac[2], resultadosNac[1]);
-    }
-
-    // Deduplicar
+    // Deduplicar por URL
     const vistos = {};
     const unicos = todos.filter(function(item) {
       if (!item.sourceUrl || vistos[item.sourceUrl]) return false;
@@ -550,15 +526,16 @@ export default async function handler(req, res) {
     const doEstado = resultadosFinais.filter(function(r) { return r.tipo_local === 'estado'; }).length;
     const nacionais = resultadosFinais.filter(function(r) { return r.tipo_local === 'nacional'; }).length;
 
-    console.log('Finalizado: ' + resultadosFinais.length + ' leads (cidade:' + daCidade + ', estado:' + doEstado + ', nacional:' + nacionais + ')');
+    console.log('Finalizado: ' + resultadosFinais.length + ' contatos (' + comTelefone + ' com tel)');
 
     res.status(200).json({
       leads: resultadosFinais,
       meta: {
-        intent: 'b2c_buyer_intent',
-        summary: resultadosFinais.length + ' leads para "' + query + '"' + (location ? ' em ' + location : '') + '. ' + comTelefone + ' com telefone. ' + daCidade + ' na cidade, ' + doEstado + ' no estado, ' + nacionais + ' nacionais.',
-        targetAudience: 'Pessoas com intencao de compra',
-        modo_busca: modoUsado,
+        intent: 'b2c_active_prospecting',
+        summary: resultadosFinais.length + ' CONTATOS ATUANTES no mercado de "' + query + '"' + (location ? ' (foco ' + location + ')' : '') + '. ' + comTelefone + ' com telefone direto. ' + daCidade + ' na cidade, ' + doEstado + ' no estado, ' + nacionais + ' nacionais.',
+        targetAudience: 'Produtores, criadores e gestores rurais ATIVOS no mercado',
+        estrategia: 'PROSPECCAO ATIVA - Enviar link do site para contatos atuantes',
+        modo_busca: 'prospeccao-ativa',
         resumo_geografico: {
           cidade: daCidade,
           estado: doEstado,
