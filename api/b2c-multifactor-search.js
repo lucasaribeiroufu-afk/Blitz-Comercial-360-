@@ -44,6 +44,16 @@ const KEYWORDS_COMPRA = [
   'to precisando', 'estou precisando'
 ];
 
+// 🚫 Palavras que indicam VENDEDOR (excluir esses posts)
+const KEYWORDS_VENDEDOR = [
+  'a venda', 'vende-se', 'vendo ', 'vendo-', 'vendemos',
+  'oportunidade de investimento', 'excelente oportunidade',
+  'fazenda a venda', 'fazenda para venda', 'sitio a venda',
+  'terreno a venda', 'area a venda', 'propriedade a venda',
+  'leilao', 'leilão', 'lance inicial', 'avaliacao',
+  'catalogo', 'tabela de preco', 'consulte valores', 'sob consulta'
+];
+
 function normalizar(s) {
   return (s || '').toLowerCase()
     .normalize('NFD').replace(/[\u0300-\u036f]/g, '')
@@ -207,20 +217,32 @@ async function buscarFacebookGroups(query, location, nacional) {
 
     console.log('Termos especificos da query:', termosQuery.join(', '));
 
+    const vendedorNorm = KEYWORDS_VENDEDOR.map(normalizar);
+
+    // 🎯 Extrair o termo PRINCIPAL da query (o mais específico)
+    // Ex: "balança para gado" → "balanca" (produto)
+    const termoPrincipal = termosQuery[0] || '';
+
     const filtrados = posts
       .filter(function(post) {
         const texto = normalizar(post.text || post.message || post.postText || '');
         
+        // 1. Precisa ter frase COMPLETA de intenção (não apenas "comprar")
         const temIntencao = keywordsNorm.some(function(k) { return texto.indexOf(k) !== -1; });
         if (!temIntencao) return false;
         
-        if (termosQuery.length > 0) {
-          const temTermoQuery = termosQuery.some(function(t) { return texto.indexOf(t) !== -1; });
-          if (!temTermoQuery) return false;
+        // 2. 🚫 REJEITAR posts de vendedor
+        const temVendedor = vendedorNorm.some(function(v) { return texto.indexOf(v) !== -1; });
+        if (temVendedor) return false;
+        
+        // 3. 🎯 Precisa ter o TERMO PRINCIPAL da query (ex: "balanca")
+        if (termoPrincipal && texto.indexOf(termoPrincipal) === -1) {
+          return false;
         }
         
         return true;
       })
+      
       .map(function(post) {
         const textoPost = post.text || post.message || post.postText || '';
         const textoNorm = normalizar(textoPost);
