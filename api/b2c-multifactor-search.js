@@ -1,5 +1,5 @@
 // ============================================================
-// CEREBRO B2C v12: Radar de Intencao de Compra MULTI-NICHO
+// CEREBRO B2C v13: Radar de Intencao de Compra MULTI-NICHO
 // Fontes: Apify (Facebook Groups OFICIAL) + Serper + Gemini
 // 11 grupos de agro cadastrados (~231 mil pessoas)
 // ============================================================
@@ -8,7 +8,6 @@ const APIFY_API_TOKEN = process.env.APIFY_API_TOKEN;
 const SERPER_API_KEY = process.env.SERPER_API_KEY;
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 
-// Ator OFICIAL da Apify (rating 4.9, 41K usuarios, estavel)
 const ACTOR_ID = 'apify~facebook-groups-scraper';
 
 // ============================================================
@@ -34,7 +33,6 @@ const GRUPOS_POR_NICHO = {
   eletronicos: []
 };
 
-// Palavras-chave universais de intencao de compra
 const KEYWORDS_COMPRA = [
   'quero comprar', 'onde compro', 'onde encontro', 'procuro',
   'procurando', 'preciso de', 'indicacao', 'indica',
@@ -49,7 +47,6 @@ function normalizar(s) {
     .replace(/[^a-z0-9\s]/g, '').replace(/\s+/g, ' ').trim();
 }
 
-// Extrai telefone brasileiro do texto
 function extrairTelefone(texto) {
   if (!texto) return null;
   const regex = /(?:\(?([1-9]{2})\)?\s*)?(9?\d{4})[-\s]?(\d{4})/g;
@@ -73,7 +70,6 @@ function extrairTelefone(texto) {
   return null;
 }
 
-// Detecta o nicho pela query
 function detectarNicho(query) {
   const q = normalizar(query);
   
@@ -101,7 +97,47 @@ function detectarNicho(query) {
     return 'eletronicos';
   }
   
-  return 'agro'; // padrao
+  return 'agro';
+}
+
+// ============================================================
+// LER BODY RAW (fix para Vercel que nao parseia JSON)
+// ============================================================
+async function lerBodyRaw(req) {
+  // Tentativa 1: req.body ja e objeto
+  if (req.body && typeof req.body === 'object' && Object.keys(req.body).length > 0) {
+    console.log('Body veio parseado do Vercel:', JSON.stringify(req.body).slice(0, 300));
+    return req.body;
+  }
+
+  // Tentativa 2: req.body e string JSON
+  if (req.body && typeof req.body === 'string') {
+    try {
+      const parsed = JSON.parse(req.body);
+      console.log('Body veio como string, parseado:', JSON.stringify(parsed).slice(0, 300));
+      return parsed;
+    } catch (e) {
+      console.error('Erro parse string body:', e.message);
+    }
+  }
+
+  // Tentativa 3: ler stream raw
+  try {
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(typeof chunk === 'string' ? Buffer.from(chunk) : chunk);
+    }
+    const rawBody = Buffer.concat(chunks).toString('utf8');
+    console.log('Body lido do stream RAW:', rawBody.slice(0, 300));
+    
+    if (rawBody) {
+      return JSON.parse(rawBody);
+    }
+  } catch (e) {
+    console.error('Erro ao ler stream raw:', e.message);
+  }
+
+  return {};
 }
 
 // ============================================================
@@ -127,21 +163,25 @@ async function buscarFacebookGroups(query, location, nacional) {
 
     const url = 'https://api.apify.com/v2/acts/' + ACTOR_ID + '/run-sync-get-dataset-items?token=' + APIFY_API_TOKEN;
 
+    const payloadApify = {
+      startUrls: grupos,
+      maxPosts: 30,
+      maxComments: 0,
+      onlyPostsNewerThan: '1 month',
+      viewOption: 'CHRONOLOGICAL'
+    };
+
+    console.log('Payload Apify:', JSON.stringify(payloadApify).slice(0, 500));
+
     const response = await fetch(url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        startUrls: grupos,
-        maxPosts: 15,
-        maxComments: 0,
-        onlyPostsNewerThan: '1 month',
-        viewOption: 'CHRONOLOGICAL'
-      })
+      body: JSON.stringify(payloadApify)
     });
 
     if (!response.ok) {
       const errText = await response.text();
-      console.error('Apify Facebook erro:', response.status, errText.slice(0, 500));
+      console.error('Apify Facebook erro:', response.status, errText.slice(0, 800));
       return [];
     }
 
@@ -149,9 +189,12 @@ async function buscarFacebookGroups(query, location, nacional) {
     const posts = Array.isArray(data) ? data : [];
     console.log('Facebook Groups: ' + posts.length + ' posts brutos');
 
-   const keywordsNorm = KEYWORDS_COMPRA.map(normalizar);
+    if (posts.length > 0) {
+      console.log('Exemplo post[0]:', JSON.stringify(posts[0]).slice(0, 400));
+    }
 
-    // 🎯 Extrai palavras-chave da query para filtrar posts ESPECÍFICOS
+    const keywordsNorm = KEYWORDS_COMPRA.map(normalizar);
+
     const termosQuery = normalizar(query)
       .split(' ')
       .filter(function(w) { 
@@ -165,13 +208,13 @@ async function buscarFacebookGroups(query, location, nacional) {
       .filter(function(post) {
         const texto = normalizar(post.text || post.message || post.postText || '');
         
-        // 1. Precisa ter palavra de intencao de compra
         const temIntencao = keywordsNorm.some(function(k) { return texto.indexOf(k) !== -1; });
         if (!temIntencao) return false;
         
-        // 2. Precisa ter pelo menos 1 termo da query (ex: "balanca" ou "gado")
-        const temTermoQuery = termosQuery.some(function(t) { return texto.indexOf(t) !== -1; });
-        if (!temTermoQuery) return false;
+        if (termosQuery.length > 0) {
+          const temTermoQuery = termosQuery.some(function(t) { return texto.indexOf(t) !== -1; });
+          if (!temTermoQuery) return false;
+        }
         
         return true;
       })
@@ -185,17 +228,14 @@ async function buscarFacebookGroups(query, location, nacional) {
 
         const telefone = extrairTelefone(textoPost);
 
-        // Nome do autor (multiplas possibilidades)
         const nomeAutor = (post.user && post.user.name) || 
                           (post.author && post.author.name) || 
                           post.authorName || 
                           post.userName ||
                           'Comprador';
 
-        // URL do post
         const urlPost = post.url || post.postUrl || post.facebookUrl || post.link || '';
 
-        // Data
         let dataPost = new Date().toISOString().split('T')[0];
         if (post.time) {
           try {
@@ -233,7 +273,7 @@ async function buscarFacebookGroups(query, location, nacional) {
     return filtrados;
 
   } catch (err) {
-    console.error('Erro Apify:', err.message);
+    console.error('Erro Apify:', err.message, err.stack);
     return [];
   }
 }
@@ -370,32 +410,24 @@ export default async function handler(req, res) {
   if (req.method === 'OPTIONS') { res.status(200).end(); return; }
   if (req.method !== 'POST') return res.status(405).json({ error: 'Metodo nao permitido' });
 
-  // 🎯 Parser manual robusto (Vercel às vezes entrega como string)
-  let body = req.body;
-  
-  if (typeof body === 'string') {
-    try {
-      body = JSON.parse(body);
-    } catch (e) {
-      console.error('Erro parse body string:', e.message, 'Body recebido:', body.slice(0, 200));
-      body = {};
-    }
-  }
-  
-  if (!body || typeof body !== 'object') {
-    body = {};
-  }
+  console.log('=== Handler iniciado ===');
+  console.log('Method:', req.method);
+  console.log('Content-Type:', req.headers['content-type']);
+
+  // 🎯 LER BODY (robusto)
+  const body = await lerBodyRaw(req);
 
   const query = body.query || '';
   const location = body.location || '';
   const count = body.count || 20;
 
-  console.log('Body recebido:', JSON.stringify(body));
+  console.log('Query extraida:', query);
+  console.log('Location:', location);
 
   if (!query) return res.status(400).json({ error: 'Forneca o que deseja rastrear.' });
 
   try {
-    console.log('===== B2C v12: "' + query + '" em ' + (location || 'Brasil') + ' =====');
+    console.log('===== B2C v13: "' + query + '" em ' + (location || 'Brasil') + ' =====');
 
     let todos = [];
     let modoUsado = 'nacional';
