@@ -411,7 +411,7 @@ export async function extractFromDirectUrl(
 }
 
 // ============================================================
-// 🎯 B2C: PROSPECCAO ATIVA MULTI-NICHO (v16)
+// 🎯 B2C: PROSPECCAO ATIVA MULTI-NICHO (v17)
 // Rota: /api/b2c-multifactor-search
 // Retorna contatos ATUANTES no mercado (nao so compradores)
 // ============================================================
@@ -449,26 +449,13 @@ export async function searchB2CLeads(
 
     // 🎯 MAPEAMENTO RICO: preenche TODOS os campos do card (igual B2B)
     const mappedLeads: ExtractedResult[] = rawLeads.map((r: any, idx: number) => {
-      // Nota final baseada no score
       const score = r.score || r.confidence || 60;
       const ratingEstrelas = Math.round((Math.min(score, 100) / 20) * 10) / 10;
-
-      // Nome do contato/autor
       const nomeContato = r.name || 'Contato atuante';
-
-      // Grupo/fonte do Facebook (ex: "Pecuária Brasil Oficial")
       const nomeGrupo = r.grupo || r.company || 'Facebook Groups';
-
-      // Setor detectado
       const setor = r.category || 'Mercado Agro';
-
-      // Trecho do post (limitado)
       const trechoPost = (r.intent || '').substring(0, 200).replace(/\s+/g, ' ').trim();
-
-      // Instagram inferido (se nao vier do backend)
       const instagramHandle = r.instagram || generateInstagramForLead(nomeContato, true, idx);
-
-      // Label geografico
       const labelLocal = r.label_local || '🌎 Nacional';
 
       return {
@@ -485,30 +472,32 @@ export async function searchB2CLeads(
         // ─── Campos ricos (preenchem o card bonito) ───
         company: nomeGrupo,
         category: setor,
-        decisionMaker: 'Produtor/Criador atuante — ' + trechoPost.substring(0, 100) + '...',
-        department: setor + ' | Fonte: ' + nomeGrupo,
-        legalSource: 'Origem: Facebook Groups (Prospecção Ativa) — Grupo: ' + nomeGrupo,
+        decisionMaker: r.decisionMaker || ('Produtor/Criador atuante — ' + trechoPost.substring(0, 100) + '...'),
+        department: r.department || (setor + ' | Fonte: ' + nomeGrupo),
+        legalSource: r.legalSource || ('Origem: Facebook Groups (Prospecção Ativa) — Grupo: ' + nomeGrupo),
         role: 'Contato atuante',
 
         // ─── Recomendações comerciais ───
-        pitchRecommendation: '📌 Contato atuante no mercado de ' + setor + '. Envie o LINK DO SITE do cliente via WhatsApp. Mesmo que não compre agora, pode indicar para outros produtores.',
+        pitchRecommendation: r.pitchRecommendation || ('📌 Contato atuante no mercado de ' + setor + '. Envie o LINK DO SITE do cliente via WhatsApp. Mesmo que não compre agora, pode indicar para outros produtores.'),
 
-        trendingInsights: [
-          '📝 Post: ' + trechoPost.substring(0, 130) + '...',
-          '🎯 Setor: ' + setor,
-          '💡 Estratégia: Enviar link do site — prospecção ativa',
-          '📍 ' + labelLocal,
-        ],
+        trendingInsights: Array.isArray(r.trendingInsights) && r.trendingInsights.length > 0
+          ? r.trendingInsights
+          : [
+              '📝 Post: ' + trechoPost.substring(0, 130) + '...',
+              '🎯 Setor: ' + setor,
+              '💡 Estratégia: Enviar link do site — prospecção ativa',
+              '📍 ' + labelLocal,
+            ],
 
-        competitorPrices: '',
-        demandTimeframe: r.demandTimeframe || 'Últimos 2 meses',
+        competitorPrices: r.competitorPrices || '',
+        demandTimeframe: r.demandTimeframe || 'Últimos 30 dias',
 
         // ─── Rating = score de atuação ───
         rating: ratingEstrelas > 0 ? ratingEstrelas : 4.5,
         reviewsCount: r.reviewsCount || r.score_atuacao || 0,
         confidence: score,
 
-        // ─── Campos de contato duplicados (para o card renderizar) ───
+        // ─── Contatos duplicados ───
         whatsapp: r.phone || r.contact || '',
         establishmentPhone: r.phone || r.contact || '',
         decisionMakerPhone: r.phone || r.contact || '',
