@@ -322,23 +322,73 @@ async function buscarFacebookGroups(query, location, nacional) {
         if (telefone) scoreFinal += 10;
         if (nomeAutor && nomeAutor !== 'Contato') scoreFinal += 5;
 
+         // Detectar setor especifico
+        const textoNorm = normalizar(textoPost);
+        let setor = 'Agropecuária';
+        if (textoNorm.indexOf('leite') !== -1 || textoNorm.indexOf('ordenha') !== -1) setor = 'Pecuária Leiteira';
+        else if (textoNorm.indexOf('corte') !== -1 || textoNorm.indexOf('abate') !== -1 || textoNorm.indexOf('boi') !== -1) setor = 'Pecuária de Corte';
+        else if (textoNorm.indexOf('soja') !== -1 || textoNorm.indexOf('milho') !== -1 || textoNorm.indexOf('safra') !== -1) setor = 'Agricultura (Grãos)';
+        else if (textoNorm.indexOf('cafe') !== -1) setor = 'Cafeicultura';
+        else if (textoNorm.indexOf('cana') !== -1) setor = 'Cana-de-açúcar';
+        else if (textoNorm.indexOf('racao') !== -1 || textoNorm.indexOf('suplemento') !== -1) setor = 'Nutrição Animal';
+        else if (textoNorm.indexOf('leilao') !== -1 || textoNorm.indexOf('arremat') !== -1) setor = 'Leilões/Negociação';
+
+        // Extrair trecho curto do post para o card
+        const trechoCurto = textoPost.replace(/\s+/g, ' ').trim().substring(0, 180);
+
+        // Grupo de origem
+        const nomeGrupo = post.groupTitle || post.group || post.groupName || 'Grupo Facebook';
+
+        // Score convertido para rating 0-5 (para o card mostrar estrelas)
+        const ratingEstrelas = Math.round((Math.min(scoreFinal, 100) / 20) * 10) / 10;
+
         return {
+          // ─── Campos básicos esperados pelo card ───
           name: nomeAutor,
           phone: telefone || '',
-          source: 'Facebook Groups',
-          sourceUrl: urlPost,
-          intent: textoPost.substring(0, 500),
+          email: '',
+          instagram: '@' + normalizar(nomeAutor).replace(/\s+/g, '').slice(0, 20) + '.agro',
           location: geo.location,
-          tipo_local: geo.tipo_local,
-          label_local: geo.label_local,
-          date: dataPost,
-          contact: telefone || null,
+          profileUrl: urlPost,
+          platform: 'facebook',
+          entityType: 'pj',
+          
+          // ─── Campos de identificação (preenchem o card bonito) ───
+          company: nomeGrupo,
+          category: setor,
+          decisionMaker: 'Produtor/Criador atuante — ' + trechoCurto.substring(0, 80) + '...',
+          department: setor + ' | Fonte: ' + nomeGrupo,
+          legalSource: 'Origem: Facebook Groups (Prospecção Ativa) — Grupo: ' + nomeGrupo,
+          
+          // ─── Recomendações comerciais ───
+          pitchRecommendation: '📌 Contato atuante no mercado de ' + setor + '. Envie o LINK DO SITE do cliente via WhatsApp. Mesmo que não compre agora, pode indicar para outros produtores.',
+          trendingInsights: [
+            '📝 Post do contato: ' + trechoCurto.substring(0, 120) + '...',
+            '🎯 Setor: ' + setor,
+            '💡 Estratégia: Enviar link do site — prospecção ativa'
+          ],
+          competitorPrices: '',
+          demandTimeframe: 'Últimos 2 meses',
+          
+          // ─── Rating = score de atuação ───
+          rating: ratingEstrelas,
+          reviewsCount: scoreAtuacao,
+          confidence: Math.min(scoreFinal, 100),
+          
+          // ─── Campos extras específicos do B2C ───
           score: Math.min(scoreFinal, 100),
           score_atuacao: scoreAtuacao,
           tem_telefone: !!telefone,
           tipo: 'active_contact',
-          grupo: post.groupTitle || post.group || post.groupName || 'Grupo Facebook',
-          observacao: 'Contato atuante no mercado - prospectar com link do site'
+          grupo: nomeGrupo,
+          label_local: geo.label_local,
+          tipo_local: geo.tipo_local,
+          date: dataPost,
+          source: 'Facebook Groups',
+          sourceUrl: urlPost,
+          intent: textoPost.substring(0, 500),
+          contact: telefone || null,
+          observacao: 'Contato atuante — prospectar com link do site'
         };
       })
       .filter(function(p) { return p.sourceUrl && p.sourceUrl.indexOf('http') === 0; });
