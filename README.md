@@ -67,6 +67,8 @@ Para investigar, repita a busca e confira DevTools > Network > `deep-search`: Re
 
 Uma resposta `401` JSON sem token confirma somente que a função carregou e recusou uma requisição não autenticada. Ela não comprova a coleta real ou a validade das credenciais do Google Places.
 
+Firebase Admin está fixado em `13.10.0` para usar a cadeia compatível `jwks-rsa@3.2.2 → jose@4.15.9` do lockfile. A cadeia anterior (`firebase-admin@14.5.0 → jwks-rsa@4.1.0 → jose@6.2.12`) depende do suporte de Node a `require(ESM)` e falhou na prévia com `ERR_REQUIRE_ESM`, antes da execução das rotas B2B/B2C. Os testes de compatibilidade carregam ambas as funções com esse suporte desativado e confirmam a rejeição de sessões ausentes/inválidas. Não altere dependências manualmente em `node_modules`; use `npm ci`. Uma atualização futura do Admin deve repetir essa validação e a do pacote serverless.
+
 ## Exemplo regional
 
 Selecione Radar B2C, produto `tinta impermeabilizante` e região `Uberlândia - MG`. A busca reconhece expressões como “quero comprar”, “preciso de”, “procuro” e “onde comprar”, e variações conservadoras do produto. O texto “vendo tinta” é excluído. “Quero comprar tinta branca” não comprova procura por tinta impermeabilizante. “Moro em Uberlândia-MG e quero comprar tinta impermeabilizante” pode qualificar, com link, perfil e texto de origem. Telefone só é associado quando aparece como contato oferecido pelo mesmo autor.
