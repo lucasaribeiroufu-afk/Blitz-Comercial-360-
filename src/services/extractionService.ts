@@ -1,4 +1,5 @@
 import {apiHeaders} from './apiAuth';
+import {readApiResponse} from './apiResponse';
 import type { ExtractedResult, ExtractionApiConfig, PlatformType, SearchIntelligenceMeta, MarketplaceSignal } from '../types';
 export const DEFAULT_API_CONFIG: ExtractionApiConfig = {apiUrl:'',apiKey:'',authHeaderName:'Authorization',requestMethod:'POST',useCustomApi:false};
 export interface DeepSearchResult {leads: ExtractedResult[]; meta?: SearchIntelligenceMeta; marketplaceSignals?: MarketplaceSignal[];}
@@ -7,9 +8,7 @@ export function normalizeUrl(input: string) {const s=input.trim(); return s && !
 export function detectPlatform(url: string): PlatformType {return url.includes('instagram.com') ? 'instagram' : url.includes('google.com/maps') ? 'google_maps' : 'website';}
 async function request(route: string, body: object): Promise<any> {
  const response = await fetch(route,{method:'POST',headers:await apiHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(55000)});
- const data = await response.json().catch(() => {throw new Error('O servidor não retornou dados JSON. Verifique a implantação das rotas /api.');});
- if (!response.ok) throw new Error(data.error || `Falha HTTP ${response.status}. Nenhum dado substituto foi criado.`);
- return data;
+ return readApiResponse(response, route);
 }
 export async function searchGoogleLeads(term: string, location: string, count=6, config?: ExtractionApiConfig, objective?: string, page=1, offset=0, excludeNames: string[]=[], targetEntityType:'both'|'pf'|'pj'='both', expansionMode:'cluster'|'strict'='strict', searchSeed: number|string=Date.now()): Promise<DeepSearchResult> {
  if(config?.useCustomApi) throw new Error('API personalizada desativada: os dados externos ainda não possuem validação de proveniência. Use as fontes configuradas no servidor.');

@@ -57,6 +57,16 @@ Os testes usam fontes simuladas e cobrem fabricação de dados, substituição d
 
 Documentação da fonte Places: https://developers.google.com/maps/documentation/places/web-service/text-search
 
+## Diagnóstico de erros da prévia
+
+A busca B2B envia `POST /api/deep-search` no mesmo domínio da interface, com `Content-Type: application/json` e token Firebase no cabeçalho `Authorization`. O login no navegador e a inicialização da função serverless são etapas distintas. O servidor Express em `dist/server.cjs` não atende as funções `/api` na Vercel; cada arquivo em `api/` é um ponto de entrada serverless com dependências rastreadas pela plataforma. O rewrite de navegação SPA exclui `/api/`.
+
+Quando a hospedagem devolve HTML, texto ou JSON inválido, a interface informa a rota, o status HTTP, o Content-Type e, quando reconhecido, o código de erro da Vercel. O corpo bruto não é exibido nem transformado em contatos ou lista vazia.
+
+Para investigar, repita a busca e confira DevTools > Network > `deep-search`: Request URL, Status Code, Response Headers > Content-Type e o texto da aba Response. Na Vercel, abra o deployment da prévia > Logs/Runtime Logs e localize `POST /api/deep-search` no mesmo horário. A mensagem de erro completa e o stack trace distinguem falha de inicialização, dependência, sessão, quota ou timeout. Confira também Build Logs, principalmente versão Node.js e trecho de criação/empacotamento das funções. Remova Authorization, cookies, tokens e chaves antes de compartilhar; não envie HAR completo.
+
+Uma resposta `401` JSON sem token confirma somente que a função carregou e recusou uma requisição não autenticada. Ela não comprova a coleta real ou a validade das credenciais do Google Places.
+
 ## Exemplo regional
 
 Selecione Radar B2C, produto `tinta impermeabilizante` e região `Uberlândia - MG`. A busca reconhece expressões como “quero comprar”, “preciso de”, “procuro” e “onde comprar”, e variações conservadoras do produto. O texto “vendo tinta” é excluído. “Quero comprar tinta branca” não comprova procura por tinta impermeabilizante. “Moro em Uberlândia-MG e quero comprar tinta impermeabilizante” pode qualificar, com link, perfil e texto de origem. Telefone só é associado quando aparece como contato oferecido pelo mesmo autor.
