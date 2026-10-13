@@ -2,9 +2,11 @@ export type ContactStatus = 'new' | 'contacted' | 'meeting' | 'qualified' | 'unr
 
 export type EntityType = 'pj' | 'pf' | 'both';
 
-export type PlatformType = 'google_maps' | 'google_business' | 'google_search' | 'linkedin' | 'instagram' | 'website' | 'other';
+export type PlatformType = 'google_maps' | 'google_business' | 'google_search' | 'linkedin' | 'instagram' | 'website' | 'facebook' | 'tiktok' | 'other';
 
-export interface Contact {
+export interface FieldEvidence {value: unknown; sourceUrl: string; source: string; retrievedAt: string; excerpt: string;}
+export interface Provenance {evidence?: Record<string, FieldEvidence>; verificationStatus?: 'source_observed'; recordType?: 'purchase_mention'|'marketplace_product'|'marketplace_question'; intent?: string; authorProfileUrl?: string; publishedAt?: string; geographicStatus?: string; matchedProduct?: string;}
+export interface Contact extends Provenance {
   id?: string;
   name: string;
   cnpj?: string;
@@ -48,7 +50,7 @@ export interface Contact {
   website?: string | null;
 }
 
-export interface ExtractedResult {
+export interface ExtractedResult extends Provenance {
   name: string;
   cnpj?: string;
   phone: string;
@@ -90,6 +92,10 @@ export interface SearchIntelligenceMeta {
   targetAudience: string;
   trendingItems?: string[];
   suggestedPitch?: string;
+  warnings?: string[];
+  retrievedAt?: string;
+  requestedCount?: number;
+  returnedCount?: number;
   page?: number;
   offset?: number;
   totalHarvested?: number;
@@ -108,4 +114,8 @@ export interface UserProfile {
   displayName: string | null;
   email: string | null;
   photoURL: string | null;
+}
+
+export interface MarketplaceSignal extends Provenance {
+ platform: 'shopee'|'mercado_livre';recordType: 'marketplace_product'|'marketplace_question';sourceUrl:string;name?:string;priceBRL?:number;priceIsPix?:boolean;shippingOrigin?:string;soldCount?:number;soldPeriod?:string;question?:string;questionId?:string;regionalMatch?:boolean|null;buyerIdentityAvailable:false;
 }

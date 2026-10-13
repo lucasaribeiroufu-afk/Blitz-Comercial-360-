@@ -1,3 +1,6 @@
+import { MarketplaceInsights } from './MarketplaceInsights';
+import type { MarketplaceSignal } from '../types';
+import { SourceEvidence } from './SourceEvidence';
 import React, { useState, useMemo } from 'react';
 import { 
   Zap, 
@@ -111,12 +114,16 @@ export function ExtractionHero({
   const [activeTab, setActiveTab] = useState<'search' | 'url'>('search');
   
   // Search state - 3 Integrated & Synchronized Consultation Pillars
-  const [searchTerm, setSearchTerm] = useState('Posto de Combustível');
-  const [locationTerm, setLocationTerm] = useState('Ribeirão Preto, SP');
-  const [searchObjective, setSearchObjective] = useState('posto de combustível em Ribeirão Preto, SP com nome do gerente de compras, telefone comercial com DDD e localização');
+  const [searchTerm, setSearchTerm] = useState('tinta impermeabilizante');
+  const [locationTerm, setLocationTerm] = useState('Uberlândia, MG');
+  const [searchObjective, setSearchObjective] = useState('publicações com intenção de comprar tinta impermeabilizante e região declarada em Uberlândia, MG');
   const [isObjectiveCustom, setIsObjectiveCustom] = useState(false);
+  const [includeMarketplaces,setIncludeMarketplaces]=useState(true);
+  const [marketplaceSignals,setMarketplaceSignals]=useState<MarketplaceSignal[]>([]);
+  const [socialSourceLinks,setSocialSourceLinks] = useState('');
+  const socialSourceUrls = socialSourceLinks.split(/\s+/).filter(Boolean);
   const [leadCount, setLeadCount] = useState<number>(4);
-  const [targetEntityType, setTargetEntityType] = useState<EntityType>('pj');
+  const [targetEntityType, setTargetEntityType] = useState<EntityType>('pf');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [harvestedNames, setHarvestedNames] = useState<string[]>([]);
 
@@ -172,6 +179,7 @@ export function ExtractionHero({
   React.useEffect(() => {
     if (clearTrigger && clearTrigger > 0) {
       setExtractedList([]);
+    setMarketplaceSignals([]);
       setSearchMeta(null);
       setSavedIds(new Set());
       setError(null);
@@ -272,6 +280,7 @@ export function ExtractionHero({
 
   const handleClearResults = () => {
     setExtractedList([]);
+    setMarketplaceSignals([]);
     setSearchMeta(null);
     setSavedIds(new Set());
     setError(null);
@@ -279,11 +288,11 @@ export function ExtractionHero({
 
   const handleSearchGoogle = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
-    const effectiveTerm = searchTerm.trim() || 'Empresas e Serviços';
-    const effectiveLoc = locationTerm.trim() || `${resolvedGeo.city}, ${resolvedGeo.state}`;
+    const effectiveTerm = searchTerm.trim();
+    const effectiveLoc = locationTerm.trim();
     const effectiveObjective = searchObjective.trim() || buildHarmonizedObjective(effectiveTerm, effectiveLoc);
 
-    if (!searchTerm.trim() && !searchObjective.trim()) {
+    if (!searchTerm.trim()) {
       setError('Por favor, informe o que deseja buscar (ex: Posto de combustível, Supermercado, Usina) ou o requisito de busca.');
       return;
     }
@@ -291,6 +300,7 @@ export function ExtractionHero({
     setError(null);
     setIsLoading(true);
     setExtractedList([]);
+    setMarketplaceSignals([]);
     setSearchMeta(null);
     setSavedIds(new Set());
     setCurrentPage(1);
@@ -308,7 +318,7 @@ export function ExtractionHero({
       if (targetEntityType === 'pf') {
         setLoadingStatus(`🎯 Rastreando menções públicas de pessoas buscando comprar "${effectiveTerm}"...`);
         await new Promise((r) => setTimeout(r, 150));
-        response = await searchB2CLeads(effectiveTerm, effectiveLoc, leadCount);
+        response = await searchB2CLeads(effectiveTerm, effectiveLoc, leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces);
       } else {
         setLoadingStatus('Extraindo contatos diretos (PF & PJ), intenção de busca e localização...');
         response = await searchGoogleLeads(
@@ -327,6 +337,7 @@ export function ExtractionHero({
       }
 
       setExtractedList(response.leads);
+      setMarketplaceSignals(response.marketplaceSignals || []);
       setHarvestedNames(response.leads.map(l => l.name));
       if (response.meta) {
         setSearchMeta(response.meta);
@@ -338,7 +349,7 @@ export function ExtractionHero({
         const contactsToSave = response.leads.map((r) => {
           const noteParts = [
             searchObjective ? `Objetivo: ${searchObjective}` : '',
-            r.entityType === 'pf' ? 'Tipo: Pessoa Física (Consumidor)' : 'Tipo: Pessoa Jurídica (Empresa/CNPJ)',
+            r.recordType === 'purchase_mention' ? 'Menção em página pública; autor não confirmado' : 'Estabelecimento listado; responsável por compras não confirmado',
             r.trendingInsights && r.trendingInsights.length > 0 ? `Itens procurados: ${r.trendingInsights.join(', ')}` : '',
             `Extraído via Blitz 360 AI Engine (${effectiveTerm} - ${r.location})`
           ].filter(Boolean);
@@ -347,7 +358,15 @@ export function ExtractionHero({
 
           return {
             name: r.name,
-            entityType: r.entityType || (targetEntityType === 'pf' ? 'pf' : 'pj'),
+            evidence: r.evidence || {},
+            verificationStatus: r.verificationStatus,
+            recordType: r.recordType,
+            intent: r.intent,
+            authorProfileUrl: r.authorProfileUrl || '',
+            publishedAt: r.publishedAt || '',
+            geographicStatus: r.geographicStatus || '',
+            matchedProduct: r.matchedProduct || '',
+            entityType: r.entityType,
             phone: r.phone || '',
             email: r.email || '',
             instagram: insta.handle || '',
@@ -361,7 +380,7 @@ export function ExtractionHero({
             trendingInsights: Array.isArray(r.trendingInsights) ? r.trendingInsights : [],
             competitorPrices: r.competitorPrices || '',
             demandTimeframe: r.demandTimeframe || '',
-            rating: typeof r.rating === 'number' ? r.rating : 4.8,
+            rating: typeof r.rating === 'number' ? r.rating : 0,
             reviewsCount: typeof r.reviewsCount === 'number' ? r.reviewsCount : 0,
             status: 'new' as const,
             notes: noteParts.join(' | '),
@@ -405,7 +424,7 @@ export function ExtractionHero({
       // Para B2C, sempre pega nova safra via mesma rota (não tem paginação real ainda)
       let response;
       if (targetEntityType === 'pf') {
-        response = await searchB2CLeads(effectiveTerm, locationTerm, leadCount);
+        response = await searchB2CLeads(effectiveTerm, locationTerm, leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces);
       } else {
         response = await searchGoogleLeads(
           effectiveTerm,
@@ -433,7 +452,7 @@ export function ExtractionHero({
           const contactsToSave = response.leads.map((r) => {
             const noteParts = [
               searchObjective ? `Objetivo: ${searchObjective}` : '',
-              r.entityType === 'pf' ? 'Tipo: Pessoa Física (Consumidor)' : 'Tipo: Pessoa Jurídica (Empresa/CNPJ)',
+              r.recordType === 'purchase_mention' ? 'Menção em página pública; autor não confirmado' : 'Estabelecimento listado; responsável por compras não confirmado',
               r.trendingInsights && r.trendingInsights.length > 0 ? `Itens procurados: ${r.trendingInsights.join(', ')}` : '',
               `Safra #${nextPage} Blitz 360 (${effectiveTerm} - ${r.location})`
             ].filter(Boolean);
@@ -442,7 +461,15 @@ export function ExtractionHero({
 
             return {
               name: r.name,
-              entityType: r.entityType || (targetEntityType === 'pf' ? 'pf' : 'pj'),
+            evidence: r.evidence || {},
+            verificationStatus: r.verificationStatus,
+            recordType: r.recordType,
+            intent: r.intent,
+            authorProfileUrl: r.authorProfileUrl || '',
+            publishedAt: r.publishedAt || '',
+            geographicStatus: r.geographicStatus || '',
+            matchedProduct: r.matchedProduct || '',
+              entityType: r.entityType,
               phone: r.phone || '',
               email: r.email || '',
               instagram: insta.handle || '',
@@ -456,7 +483,7 @@ export function ExtractionHero({
               trendingInsights: Array.isArray(r.trendingInsights) ? r.trendingInsights : [],
               competitorPrices: r.competitorPrices || '',
               demandTimeframe: r.demandTimeframe || '',
-              rating: typeof r.rating === 'number' ? r.rating : 4.8,
+              rating: typeof r.rating === 'number' ? r.rating : 0,
               reviewsCount: typeof r.reviewsCount === 'number' ? r.reviewsCount : 0,
               status: 'new' as const,
               notes: noteParts.join(' | '),
@@ -490,6 +517,7 @@ export function ExtractionHero({
     setError(null);
     setIsLoading(true);
     setExtractedList([]);
+    setMarketplaceSignals([]);
     setSearchMeta(null);
     setSavedIds(new Set());
 
@@ -503,6 +531,11 @@ export function ExtractionHero({
       if (userId) {
         const contactData = {
           name: result.name,
+          evidence: result.evidence || {},
+          verificationStatus: result.verificationStatus,
+          recordType: result.recordType,
+          intent: result.intent,
+          authorProfileUrl: result.authorProfileUrl || '',
           phone: result.phone || '',
           email: result.email || '',
           instagram: result.instagram || '',
@@ -516,7 +549,7 @@ export function ExtractionHero({
           trendingInsights: Array.isArray(result.trendingInsights) ? result.trendingInsights : [],
           competitorPrices: result.competitorPrices || '',
           demandTimeframe: result.demandTimeframe || '',
-          rating: typeof result.rating === 'number' ? result.rating : 4.8,
+          rating: typeof result.rating === 'number' ? result.rating : 0,
           reviewsCount: typeof result.reviewsCount === 'number' ? result.reviewsCount : 0,
           status: 'new' as const,
           notes: 'Extraído via Link Direto',
@@ -588,7 +621,8 @@ export function ExtractionHero({
       'Cotações & Itens Buscados',
       'Preços Concorrentes',
       'Link / Google Maps',
-      'Data de Extração'
+      'Data de Extração',
+      'Evidências por Campo (JSON)'
     ];
 
     const escapeCsv = (str: string | undefined | null) => {
@@ -597,11 +631,11 @@ export function ExtractionHero({
     };
 
     const rows = extractedList.map((lead) => {
-      const entityLabel = lead.entityType === 'pf' ? 'Pessoa Física (PF)' : 'Pessoa Jurídica (PJ)';
+      const entityLabel = lead.recordType === 'purchase_mention' ? 'Menção pública (autor não confirmado)' : lead.entityType === 'pf' ? 'Pessoa Física (PF)' : 'Estabelecimento';
       const insta = resolveInstagram(lead);
       const estPhone = lead.establishmentPhone || lead.phone;
-      const decPhone = lead.decisionMakerPhone || lead.whatsapp || lead.phone;
-      const legSource = lead.legalSource || (lead.entityType === 'pj' ? 'Contrato Social / Junta Comercial / Registro em Cartório / QSA Receita Federal' : 'Registro Público');
+      const decPhone = lead.decisionMakerPhone || lead.whatsapp || '';
+      const legSource = lead.legalSource || '';
       return [
         escapeCsv(entityLabel),
         escapeCsv(lead.company || lead.name),
@@ -619,7 +653,8 @@ export function ExtractionHero({
         escapeCsv(lead.trendingInsights ? lead.trendingInsights.join('; ') : ''),
         escapeCsv(lead.competitorPrices || ''),
         escapeCsv(lead.profileUrl || ''),
-        escapeCsv(new Date().toLocaleString('pt-BR'))
+        escapeCsv(lead.evidence?.name?.retrievedAt || ''),
+        escapeCsv(JSON.stringify(lead.evidence || {}))
       ];
     });
 
@@ -647,7 +682,7 @@ export function ExtractionHero({
     extractedList.forEach((lead, idx) => {
       const insta = resolveInstagram(lead);
       const estPhone = lead.establishmentPhone || lead.phone;
-      const decPhone = lead.decisionMakerPhone || lead.whatsapp || lead.phone;
+      const decPhone = lead.decisionMakerPhone || lead.whatsapp || '';
       lines.push(`${idx + 1}. NOME / POSTO / FAZENDA: ${lead.company || lead.name}`);
       if (lead.cnpj) {
         lines.push(`   CNPJ: ${lead.cnpj}`);
@@ -994,28 +1029,34 @@ export function ExtractionHero({
                 {/* Barra de Auditoria de Integração Multi-Fontes */}
                 <div className="flex flex-wrap items-center justify-between gap-2 px-1 text-[11px] text-zinc-400 pt-0.5">
                   <div className="flex items-center gap-1.5 flex-wrap">
-                    <span className="text-zinc-500 font-medium">Fontes Auditadas em Tempo Real:</span>
+                    <span className="text-zinc-500 font-medium">Fontes disponíveis mediante configuração:</span>
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300">
-                      <Building2 className="h-3 w-3 text-blue-400" /> Receita Federal & QSA
+                      <Building2 className="h-3 w-3 text-blue-400" /> Cadastro CNPJ (BrasilAPI)
                     </span>
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300">
-                      <FileText className="h-3 w-3 text-emerald-400" /> Licitações PNCP
+                      <FileText className="h-3 w-3 text-emerald-400" /> Google Places
                     </span>
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300">
-                      <ShieldCheck className="h-3 w-3 text-purple-400" /> Diários Oficiais
+                      <ShieldCheck className="h-3 w-3 text-purple-400" /> Páginas públicas HTML
                     </span>
                     <span className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-900 border border-zinc-800 text-[10px] text-zinc-300">
-                      <Globe className="h-3 w-3 text-indigo-400" /> Jusbrasil & Escavador
+                      <Globe className="h-3 w-3 text-indigo-400" /> Descoberta B2C (Serper)
                     </span>
                   </div>
                   <div className="text-[10px] text-zinc-500">
-                    Localidade: <strong className="text-zinc-300">{resolvedGeo.city} - {resolvedGeo.state}</strong> (DDD {resolvedGeo.ddd})
+                    Localidade solicitada: <strong className="text-zinc-300">{locationTerm || 'Não especificada'}</strong>
                   </div>
                 </div>
               </div>
 
             </div>
 
+            {targetEntityType === 'pf' && <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+              <label htmlFor="social-source-links" className="text-xs text-zinc-300">Origens públicas opcionais: grupos, posts/reels, vídeos e anúncios de marketplaces</label>
+              <textarea id="social-source-links" value={socialSourceLinks} onChange={e=>setSocialSourceLinks(e.target.value)} disabled={isLoading || isLoadingMore} rows={2} placeholder="Cole links públicos, separados por espaço. Em branco: descoberta por produto e região." className="mt-2 w-full rounded bg-zinc-950 p-2 text-xs text-zinc-200" />
+              <label className="mt-2 flex gap-2 text-xs text-zinc-300"><input type="checkbox" checked={includeMarketplaces} onChange={e=>setIncludeMarketplaces(e.target.checked)} disabled={isLoading || isLoadingMore}/>Analisar também produtos da Shopee e perguntas públicas do Mercado Livre</label>
+              <p className="mt-1 text-xs text-zinc-500">O perfil do autor é o canal de contato quando ele não publica telefone. Grupo local não comprova residência.</p>
+            </div>}
             {/* Quick Presets Section */}
             <div className="space-y-2 pt-1">
               <div className="flex items-center justify-between gap-2 text-xs">
@@ -1179,6 +1220,10 @@ export function ExtractionHero({
           </div>
         )}
 
+        {searchMeta?.warnings?.length ? <div className="mt-3 text-xs text-amber-300">{searchMeta.warnings.map((warning,index) => <p key={index}>{warning}</p>)}</div> : null}
+
+        <MarketplaceInsights signals={marketplaceSignals}/>
+
         {/* Empty state alert */}
         {!isLoading && !error && searchMeta && extractedList.length === 0 && (
           <div className="mt-6 rounded-xl border border-amber-500/30 bg-amber-950/20 p-5 text-center animate-in fade-in">
@@ -1308,7 +1353,7 @@ export function ExtractionHero({
                             {isB2CMode ? (
                               <span className="inline-flex items-center gap-1 rounded bg-purple-500/15 border border-purple-500/40 px-2 py-0.5 text-[10px] font-bold text-purple-300 shadow-sm shadow-purple-500/10">
                                 <Target className="h-3 w-3 text-purple-400" />
-                                <span>🎯 Intenção de Compra Detectada</span>
+                                <span>{lead.authorProfileUrl ? 'Autor público — intenção textual' : 'Menção pública — autor não confirmado'}</span>
                               </span>
                             ) : lead.entityType === 'pf' ? (
                               <span className="inline-flex items-center gap-1 rounded bg-purple-500/10 border border-purple-500/30 px-2 py-0.5 text-[10px] font-bold text-purple-300">
@@ -1318,10 +1363,11 @@ export function ExtractionHero({
                             ) : (
                               <span className="inline-flex items-center gap-1 rounded bg-blue-500/10 border border-blue-500/30 px-2 py-0.5 text-[10px] font-bold text-blue-300">
                                 <Building2 className="h-3 w-3" />
-                                <span>Pessoa Jurídica (CNPJ)</span>
+                                <span>Estabelecimento listado</span>
                               </span>
                             )}
 
+                            <SourceEvidence record={lead} />
                             {lead.category && (
                               <span className="inline-block text-[11px] font-medium text-zinc-400 bg-zinc-900 px-2 py-0.5 rounded border border-zinc-800 truncate max-w-full">
                                 {lead.category}

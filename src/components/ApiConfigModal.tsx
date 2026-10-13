@@ -38,46 +38,14 @@ export function ApiConfigModal({
   if (!isOpen) return null;
 
   const handleTestConnection = async () => {
-    if (!apiUrl.trim()) {
-      setTestStatus({ success: false, message: 'Informe a URL do endpoint da API para testar.' });
-      return;
-    }
-
-    setTesting(true);
-    setTestStatus(null);
-
+    setTesting(true);setTestStatus(null);
     try {
-      // Simulate/test endpoint
-      const headers: Record<string, string> = {
-        'Content-Type': 'application/json',
-      };
-      if (apiKey) {
-        headers[authHeaderName || 'Authorization'] = apiKey.startsWith('Bearer ')
-          ? apiKey
-          : `Bearer ${apiKey}`;
-      }
-
-      // Try pinging or validating structure
-      const timeoutPromise = new Promise((_, reject) =>
-        setTimeout(() => reject(new Error('Tempo limite excedido (5s)')), 5000)
-      );
-
-      const fetchPromise = fetch(apiUrl, {
-        method: requestMethod,
-        headers,
-        body: requestMethod === 'POST' ? JSON.stringify({ test: true, profileUrl: 'https://linkedin.com/in/teste' }) : undefined,
-      });
-
-      await Promise.race([fetchPromise, timeoutPromise]);
-      setTestStatus({ success: true, message: 'Conexão com a API externa estabelecida com sucesso!' });
-    } catch (err: any) {
-      setTestStatus({
-        success: false,
-        message: `Falha ao testar conexão: ${err.message}. A API pode requerer CORS ativado ou chaves válidas.`,
-      });
-    } finally {
-      setTesting(false);
-    }
+      const response=await fetch('/api/source-status');
+      if(!response.ok)throw new Error(`HTTP ${response.status}`);
+      const status=await response.json();
+      setTestStatus({success:true,message:`Configuração no servidor: Google Places ${status.googlePlaces?'presente':'ausente'}; Serper ${status.serper?'presente':'ausente'}; Apify ${status.apify?'presente':'ausente'}; Casa dos Dados ${status.casaDosDados?'presente':'ausente'}. Presença não confirma validade ou saldo.`});
+    }catch(err:any){setTestStatus({success:false,message:err.message});}
+    finally{setTesting(false);}
   };
 
   const handleSave = () => {

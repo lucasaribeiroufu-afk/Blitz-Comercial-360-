@@ -2,7 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { X, Save, User, MapPin, UserCheck, Briefcase, Sparkles, Flame, FileText, Mail, DollarSign, Clock, Building2, Users, Instagram, Check } from 'lucide-react';
 import type { Contact, ContactStatus, EntityType } from '../types';
 import { hasPurchaseIntent } from '../utils/purchaseIntent';
-import { findVerifiedSocialRecord } from '../utils/socialKnowledgeBase';
 
 interface EditContactModalProps {
   isOpen: boolean;
@@ -86,6 +85,7 @@ export function EditContactModal({
     try {
       await onSave(contact.id!, {
         name: name.trim(),
+        evidence: {},
         entityType,
         phone: phone.trim(),
         email: email.trim() || undefined,
@@ -246,30 +246,7 @@ export function EditContactModal({
                   <Instagram className="h-3.5 w-3.5 text-pink-400" />
                   <span>Instagram Oficial</span>
                 </label>
-                {(() => {
-                  const verified = findVerifiedSocialRecord(name, company, category);
-                  if (verified && verified.instagram !== instagram) {
-                    return (
-                      <button
-                        type="button"
-                        onClick={() => setInstagram(verified.instagram)}
-                        className="text-[10px] text-pink-400 hover:text-pink-300 underline font-medium"
-                        title={`Usar perfil verificado oficial: ${verified.instagram}`}
-                      >
-                        Sugerir {verified.instagram}
-                      </button>
-                    );
-                  }
-                  if (verified && verified.instagram === instagram) {
-                    return (
-                      <span className="inline-flex items-center gap-0.5 text-[9px] font-bold text-pink-400 bg-pink-500/15 px-1 rounded border border-pink-400/30">
-                        <Check className="h-2.5 w-2.5" />
-                        Verificado
-                      </span>
-                    );
-                  }
-                  return null;
-                })()}
+
               </div>
               <input
                 type="text"

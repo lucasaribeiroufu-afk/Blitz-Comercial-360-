@@ -141,47 +141,6 @@ export default function App() {
     return auditContactList(contacts);
   }, [contacts]);
 
-  // Revisão e expurgo automático de contatos fictícios/inexistentes (ex: Tatiane Lima, Larissa Vasconcelos, etc)
-  useEffect(() => {
-    if (!currentUser || contacts.length === 0) return;
-
-    // Detecta contatos com nomes ou números sintéticos/inexistentes
-    const knownFakesToDelete = contacts.filter((c) => {
-      const name = (c.name || '').trim().toLowerCase();
-      const phoneDigits = (c.phone || '').replace(/\D/g, '');
-      const isKnownFakeName = [
-        'tatiane lima fonseca',
-        'larissa vasconcelos freitas',
-        'ana paula martins medeiros',
-        'maria clara albuquerque',
-        'joão pedro silveira',
-        'silvia regina duarte',
-        'teste',
-        'dummy'
-      ].some((k) => name === k || name.startsWith(k));
-
-      const isKnownFakePhone = [
-        '34985483901', '985483901',
-        '34980418252', '980418252',
-        '34993755124', '993755124',
-        '34987654321', '987654321'
-      ].includes(phoneDigits);
-
-      return (isKnownFakeName || isKnownFakePhone) && c.id;
-    });
-
-    if (knownFakesToDelete.length > 0) {
-      const ids = knownFakesToDelete.map((c) => c.id!).filter(Boolean);
-      batchDeleteContacts(currentUser.uid, ids)
-        .then(() => {
-          showToast(`🛡️ Revisão da Base: ${ids.length} contatos sem veracidade/inexistentes foram expurgados do Firestore.`, 'success');
-        })
-        .catch((err) => {
-          console.error('Erro na auditoria automática de contatos:', err);
-        });
-    }
-  }, [contacts, currentUser]);
-
   // Clear workspace screen while preserving contacts safely in Firestore
   const handleClearScreenAndKeepInBank = () => {
     setClearScreenTrigger((prev) => prev + 1);

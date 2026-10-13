@@ -1,5 +1,4 @@
 import type { Contact } from '../types';
-import { REAL_VERIFIED_DATABASE } from './realVerifiedDatabase';
 
 export const VALID_BRAZILIAN_DDDS = new Set([
   // SP
@@ -111,136 +110,12 @@ export interface VeracityAuditResult {
  * Analisa e audita a veracidade de um contato individual da base
  */
 export function auditContactVeracity(contact: Contact): VeracityAuditResult {
-  const flags: string[] = [];
-  let score = 0;
-
-  // 1. Validação de Nome / Razão Social
-  const nameNorm = (contact.name || '').trim().toLowerCase();
-  const companyNorm = (contact.company || '').trim().toLowerCase();
-
-  if (!nameNorm || nameNorm.length < 3) {
-    return {
-      isReal: false,
-      veracityScore: 0,
-      reason: 'Nome de contato inválido ou muito curto',
-      flags: ['NOME_INVALIDO']
-    };
-  }
-
-  for (const dummy of FORBIDDEN_DUMMY_NAMES) {
-    if (nameNorm === dummy || companyNorm === dummy || nameNorm.startsWith(dummy + ' ')) {
-      return {
-        isReal: false,
-        veracityScore: 0,
-        reason: 'Contato identificado como lead de teste/fictício',
-        flags: ['TESTE_DETECTADO']
-      };
-    }
-  }
-
-  // 2. Validação Telefônica (Telefone Geral, WhatsApp ou Telefone Estabelecimento)
-  const phoneValidation = validateBrazilianPhone(contact.phone);
-  const whatsappValidation = validateBrazilianPhone(contact.whatsapp);
-  const estValidation = validateBrazilianPhone(contact.establishmentPhone);
-  const decValidation = validateBrazilianPhone(contact.decisionMakerPhone);
-
-  const hasAnyValidPhone = phoneValidation.isValid || whatsappValidation.isValid || estValidation.isValid || decValidation.isValid;
-
-  if (!hasAnyValidPhone) {
-    const errorMsg = phoneValidation.reason || whatsappValidation.reason || 'Nenhum telefone com formato e DDD válidos encontrado';
-    return {
-      isReal: false,
-      veracityScore: 10,
-      reason: `Telefone sem veracidade: ${errorMsg}`,
-      flags: ['TELEFONE_INVALIDO']
-    };
-  }
-
-  // Pontua por ter telefone validado
-  score += 40;
-
-  // 3. Comprovação de Existência Pública / Registros
-  let hasPublicProof = false;
-
-  // Checa se está na base de empresas reais cadastradas
-  const matchInRealDB = REAL_VERIFIED_DATABASE.find(b => {
-    const cleanBPhone = b.phone.replace(/\D/g, '');
-    const cleanCPhone = (contact.phone || '').replace(/\D/g, '');
-    const cleanBWpp = (b.whatsapp || '').replace(/\D/g, '');
-    const cleanCWpp = (contact.whatsapp || '').replace(/\D/g, '');
-    
-    return (
-      (cleanBPhone && cleanCPhone && cleanBPhone.endsWith(cleanCPhone.slice(-8))) ||
-      (cleanBWpp && cleanCWpp && cleanBWpp.endsWith(cleanCWpp.slice(-8))) ||
-      (b.cnpj && contact.cnpj && b.cnpj.replace(/\D/g, '') === contact.cnpj.replace(/\D/g, '')) ||
-      (b.name.toLowerCase() === nameNorm && b.city.toLowerCase() === (contact.location || '').toLowerCase())
-    );
-  });
-
-  if (matchInRealDB) {
-    score += 40;
-    hasPublicProof = true;
-    flags.push('MATCH_BASE_VERIFICADA_BRASIL');
-  }
-
-  // Checa CNPJ válido (14 dígitos)
-  if (contact.cnpj) {
-    const cleanCnpj = contact.cnpj.replace(/\D/g, '');
-    if (cleanCnpj.length === 14 && !/^(\d)\1+$/.test(cleanCnpj)) {
-      score += 25;
-      hasPublicProof = true;
-      flags.push('CNPJ_VALIDO_RECEITA_FEDERAL');
-    }
-  }
-
-  // Checa Origem Jurídica / Fonte Legal
-  if (contact.legalSource && contact.legalSource.length > 5) {
-    const srcLower = contact.legalSource.toLowerCase();
-    if (
-      srcLower.includes('junta comercial') || 
-      srcLower.includes('jucesp') || 
-      srcLower.includes('jucemg') || 
-      srcLower.includes('cartório') || 
-      srcLower.includes('receita federal') || 
-      srcLower.includes('sintegra') ||
-      srcLower.includes('diário oficial') ||
-      srcLower.includes('dou') ||
-      srcLower.includes('licitações') ||
-      srcLower.includes('pncp')
-    ) {
-      score += 20;
-      hasPublicProof = true;
-      flags.push('ORIGEM_JURIDICA_COMPROVADA');
-    }
-  }
-
-  // Checa Localização e Perfil
-  if (contact.location && contact.location.length >= 4) {
-    score += 10;
-  }
-
-  if (contact.profileUrl && (contact.profileUrl.includes('google.com/maps') || contact.profileUrl.includes('instagram.com') || contact.profileUrl.includes('http'))) {
-    score += 10;
-    hasPublicProof = true;
-    flags.push('LINK_REGISTRO_PUBLICO');
-  }
-
-  // Se o telefone é 100% válido e possui identificação real e localização
-  if (hasAnyValidPhone && contact.location && contact.name.length >= 4) {
-    hasPublicProof = true;
-  }
-
-  const finalScore = Math.min(score, 100);
-  const isReal = finalScore >= 50 && hasAnyValidPhone && hasPublicProof;
-
-  return {
-    isReal,
-    veracityScore: finalScore,
-    reason: isReal 
-      ? 'Contato verificado com existência comprovada e telefone ativo'
-      : 'Contato sem comprovação pública de existência ou telefone não verificado',
-    flags
-  };
+ const records = contact.evidence || {};
+ const nameEvidence = records.name;
+ const hasEvidence = Boolean(nameEvidence && nameEvidence.value === contact.name && /^https:\/\//.test(nameEvidence.sourceUrl) && !Number.isNaN(Date.parse(nameEvidence.retrievedAt)));
+ return {isReal:hasEvidence, veracityScore:0,
+   reason:hasEvidence ? 'Registro com proveniência de coleta. Não comprova telefone ativo, identidade do decisor ou compra atual.' : 'Sem proveniência de coleta. Formato de telefone e CNPJ não comprovam veracidade.',
+   flags:hasEvidence ? ['PROVENIENCIA_DE_COLETA','TELEFONE_ATIVO_NAO_TESTADO'] : ['SEM_PROVENIENCIA']};
 }
 
 export interface DatabaseAuditSummary {

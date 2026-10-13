@@ -1,3 +1,4 @@
+import { SourceEvidence } from './SourceEvidence';
 import React, { useState } from 'react';
 import { 
   Phone, 
@@ -66,7 +67,7 @@ export function ContactCard({
 
   const resolvedPhone = resolveWhatsAppNumber(contact);
   const establishmentPhone = resolvedPhone.establishmentPhone || contact.establishmentPhone || contact.phone;
-  const decisionMakerPhone = resolvedPhone.displayPhone;
+  const decisionMakerPhone = contact.decisionMakerPhone || '';
   const cleanDecision = resolvedPhone.cleanPhone;
   const cleanPhone = cleanDecision;
   const cleanEstablishment = establishmentPhone.replace(/\D/g, '');
@@ -150,7 +151,8 @@ export function ContactCard({
     <div className="group relative rounded-xl border border-zinc-800/90 bg-zinc-900/60 p-5 shadow-lg backdrop-blur-sm transition-all hover:border-zinc-700 hover:bg-zinc-900/90 flex flex-col justify-between">
       
       <div>
-        {/* Top Header */}
+        <SourceEvidence record={contact} />
+      {/* Top Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-2">
@@ -389,7 +391,7 @@ export function ContactCard({
               )}
             </div>
             <p className="text-[10px] text-zinc-400 leading-tight">
-              {contact.legalSource || 'Origem: Contrato Social / Junta Comercial / Registro em Cartório e QSA Receita Federal'}
+              {contact.legalSource || 'Origem jurídica não consultada'}
             </p>
             <div className="flex flex-wrap items-center gap-1 pt-1 border-t border-indigo-500/20 text-[9px]">
               <span className="text-zinc-500 text-[9px] font-medium mr-0.5">Fontes:</span>
@@ -471,7 +473,7 @@ export function ContactCard({
                 <div className="min-w-0">
                   <div className="flex items-center gap-1.5 flex-wrap">
                     <span className="block text-[9px] uppercase font-bold text-emerald-400 truncate">
-                      WhatsApp Direto ({contact.decisionMaker || 'Gerente de Compras & Suprimentos / Sócio'})
+                      WhatsApp Direto ({contact.decisionMaker || 'Responsável não identificado'})
                     </span>
                     {temWhatsapp === true && (
                       <span className="inline-flex items-center gap-1 rounded bg-emerald-500/25 border border-emerald-400/60 px-1.5 py-0.2 text-[8px] font-bold text-emerald-200 shadow-sm shadow-emerald-500/20">
