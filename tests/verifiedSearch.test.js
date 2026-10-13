@@ -12,7 +12,7 @@ test('B2B never substitutes a gas station and respects exact municipality',async
 test('provider failure and missing keys are explicit; no fallback database',async()=>{
  await assert.rejects(searchBusinesses({query:'lojas'},{mapsKey:''}),/GOOGLE_MAPS_API_KEY/);
  await assert.rejects(searchBusinesses({query:'lojas'},{mapsKey:'fixture',fetcher:async()=>({ok:false,status:403})}),/HTTP 403/);
- await assert.rejects(searchBuyers({query:'geladeira'},{serperKey:''}),/SERPER_API_KEY/);
+ assert.equal((await searchBuyers({query:'geladeira',location:'Uberlândia MG'},{limits:{enabled:false}})).meta.executionReport.state,'unavailable');
 });
 test('empty, quantity, exclusions and pagination are honest',async()=>{
  const fetcher=async()=>response({places:[place()]});
@@ -21,16 +21,10 @@ test('empty, quantity, exclusions and pagination are honest',async()=>{
  await assert.rejects(searchBusinesses({query:'x',count:-1}),/Quantidade/);
  assert.match((await searchBusinesses({query:'x',location:'Uberaba-MG'},{mapsKey:'fixture',fetcher})).meta.summary,/Nenhum resultado auditado/);
 });
-test('B2C snippets cannot create a buyer, phone, publication date or identity',async()=>{
- const fetcher=async()=>response({organic:[{link:'https://example.com/1',snippet:'Quero comprar geladeira em Uberlândia MG',date:'2026-10-13'},{link:'https://example.com/2'}]});
- const r=await searchBuyers({query:'geladeira',location:'Uberlândia MG'},{serperKey:'fixture',fetcher,readPage:async url=>({url,html:url.endsWith('1')?'<title>Fórum</title><p>Quero comprar geladeira em Uberlândia MG.</p><footer>Telefone da administração: 34999999999</footer>':'<title>Loja</title><p>Compre agora geladeira em Uberlândia MG</p>'})});
- assert.equal(r.leads.length,1);const lead=r.leads[0];assert.equal(lead.name,'Fórum');assert.equal(lead.recordType,'purchase_mention');assert.equal(lead.phone,'');assert.equal(lead.date,undefined);assert.equal(lead.entityType,undefined);assert.equal(lead.location,'');assert.equal(lead.rating,undefined);assert.equal(lead.intent,lead.evidence.intent.excerpt);
- const no=await searchBuyers({query:'geladeira'},{serperKey:'fixture',fetcher,readPage:async url=>({url,html:'<title>Sem evidência</title><p>Bem-vindo ao fórum.</p>'})});assert.equal(no.leads.length,0);
-});
-test('B2C rejects blocked sources and unrelated geography without national fallback',async()=>{
- const fetcher=async()=>response({organic:[{link:'https://example.com/blocked'}]});
- const r=await searchBuyers({query:'geladeira',location:'Uberlândia'},{serperKey:'fixture',fetcher,readPage:async()=>{throw Error('403')}});
- assert.equal(r.leads.length,0);assert.ok(r.meta.warnings.some(w=>w.includes('não verificável')));
+test('legacy B2C entrypoint honors economic gate and never uses search snippets as buyer records',async()=>{
+ let calls=0;
+ const result=await searchBuyers({query:'geladeira',location:'Uberlândia MG'}, {limits:{enabled:false},serperKey:'fixture',fetcher:async()=>{calls++;return response({organic:[{link:'https://example.com',snippet:'Quero comprar geladeira'}]});}});
+ assert.equal(calls,0);assert.equal(result.leads.length,0);assert.equal(result.meta.executionReport.state,'unavailable');assert.match(result.meta.summary,/não comprova ausência/);
  assert.equal(buyerExcerpt('Quero comprar geladeira em Uberaba','geladeira','Uberlândia'),'');
 });
 test('URL extraction never generates contacts; JSON-LD scopes organization phone',async()=>{
@@ -56,4 +50,8 @@ test('handlers return actionable status and no provider credentials',async()=>{
  const res={code:0,body:null,setHeader(){},status(n){this.code=n;return this},json(body){this.body=body;return this}};
  await makeHandler(searchBusinesses)({method:'POST',body:{query:''}},res);assert.equal(res.code,400);assert.ok(res.body.error);
  await makeHandler(async()=>{throw Error('secret-key')})({method:'POST'},res);assert.equal(res.code,502);assert.ok(!res.body.error.includes('secret-key'));
+});
+test('B2B plural niche preserves exact paint-store category without substituting another business',async()=>{
+ const r=await searchBusinesses({query:'lojas de tintas',location:'Uberlândia, MG',count:4},{mapsKey:'fixture',fetcher:async()=>response({places:[place({displayName:{text:'Tintas Fixture'},primaryTypeDisplayName:{text:'Loja de tintas'}})]})});
+ assert.equal(r.leads.length,1);assert.equal(r.leads[0].name,'Tintas Fixture');assert.equal(r.leads[0].decisionMaker,'');
 });

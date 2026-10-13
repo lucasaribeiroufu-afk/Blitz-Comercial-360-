@@ -1,8 +1,8 @@
 import {apiHeaders} from './apiAuth';
 import {readApiResponse} from './apiResponse';
-import type { ExtractedResult, ExtractionApiConfig, PlatformType, SearchIntelligenceMeta, MarketplaceSignal } from '../types';
+import type { ExtractedResult, ExtractionApiConfig, PlatformType, SearchIntelligenceMeta, MarketplaceSignal, ExecutionReport } from '../types';
 export const DEFAULT_API_CONFIG: ExtractionApiConfig = {apiUrl:'',apiKey:'',authHeaderName:'Authorization',requestMethod:'POST',useCustomApi:false};
-export interface DeepSearchResult {leads: ExtractedResult[]; meta?: SearchIntelligenceMeta; marketplaceSignals?: MarketplaceSignal[];}
+export interface DeepSearchResult {leads: ExtractedResult[]; meta?: SearchIntelligenceMeta; marketplaceSignals?: MarketplaceSignal[]; regionalUnconfirmed?: ExtractedResult[];}
 export function isUrl(input: string) {return /^(https?:\/\/|www\.)/i.test(input.trim());}
 export function normalizeUrl(input: string) {const s=input.trim(); return s && !/^https?:\/\//i.test(s) ? `https://${s}` : s;}
 export function detectPlatform(url: string): PlatformType {return url.includes('instagram.com') ? 'instagram' : url.includes('google.com/maps') ? 'google_maps' : 'website';}
@@ -19,14 +19,15 @@ export async function extractFromDirectUrl(rawUrl: string, config?: ExtractionAp
  const data=await request('/api/extract-url',{url:normalizeUrl(rawUrl)});
  return data.lead;
 }
-export async function searchB2CLeads(query: string, location: string, count=30, sourceUrls: string[]=[], onProgress?: (message:string)=>void, includeMarketplaces=false): Promise<DeepSearchResult> {
+export async function searchB2CLeads(query: string, location: string, count=30, sourceUrls: string[]=[], onProgress?: (message:string)=>void, includeMarketplaces=false, onExecution?: (report:ExecutionReport,unconfirmed:ExtractedResult[])=>void): Promise<DeepSearchResult> {
  let data=await request('/api/b2c-multifactor-search',{query,location,count,sourceUrls,includeMarketplaces});
+ onExecution?.(data.meta?.executionReport,data.regionalUnconfirmed||[]);
  if(!data.job)return data;
  for(let attempt=0;attempt<45&&!data.done;attempt++) {
   onProgress?.(data.meta?.summary || 'Coletando publicações públicas...');
   await new Promise(resolve=>setTimeout(resolve,7000));
-  data=await request('/api/social-radar',{action:'poll',job:data.job});
+  data=await request('/api/social-radar',{action:'poll',job:data.job});onExecution?.(data.meta?.executionReport,data.regionalUnconfirmed||[]);
  }
  if(!data.done)throw new Error('Coleta ainda em processamento no Apify. Nenhum contato foi fabricado; consulte a execução na sua conta.');
- return {leads:data.leads,meta:data.meta,marketplaceSignals:data.marketplaceSignals || []};
+ return {leads:data.leads,meta:data.meta,marketplaceSignals:data.marketplaceSignals || [],regionalUnconfirmed:data.regionalUnconfirmed||[]};
 }

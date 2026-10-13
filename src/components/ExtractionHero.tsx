@@ -1,7 +1,9 @@
+import {RadarExecutionReport} from './RadarExecutionReport';
+import type {ExecutionReport} from '../types';
 import { MarketplaceInsights } from './MarketplaceInsights';
 import type { MarketplaceSignal } from '../types';
 import { SourceEvidence } from './SourceEvidence';
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   Zap, 
   Search, 
@@ -119,6 +121,10 @@ export function ExtractionHero({
   const [searchObjective, setSearchObjective] = useState('publicações com intenção de comprar tinta impermeabilizante e região declarada em Uberlândia, MG');
   const [isObjectiveCustom, setIsObjectiveCustom] = useState(false);
   const [includeMarketplaces,setIncludeMarketplaces]=useState(true);
+  const searchLock=useRef(false);
+  const [radarReport,setRadarReport]=useState<ExecutionReport>();
+  const [regionalUnconfirmed,setRegionalUnconfirmed]=useState<ExtractedResult[]>([]);
+  const updateExecution=(report:ExecutionReport,unknown:ExtractedResult[])=>{setRadarReport(report);setRegionalUnconfirmed(unknown);};
   const [marketplaceSignals,setMarketplaceSignals]=useState<MarketplaceSignal[]>([]);
   const [socialSourceLinks,setSocialSourceLinks] = useState('');
   const socialSourceUrls = socialSourceLinks.split(/\s+/).filter(Boolean);
@@ -288,6 +294,7 @@ export function ExtractionHero({
 
   const handleSearchGoogle = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if(searchLock.current)return;
     const effectiveTerm = searchTerm.trim();
     const effectiveLoc = locationTerm.trim();
     const effectiveObjective = searchObjective.trim() || buildHarmonizedObjective(effectiveTerm, effectiveLoc);
@@ -297,6 +304,7 @@ export function ExtractionHero({
       return;
     }
 
+    searchLock.current=true;setRadarReport(undefined);setRegionalUnconfirmed([]);
     setError(null);
     setIsLoading(true);
     setExtractedList([]);
@@ -318,7 +326,7 @@ export function ExtractionHero({
       if (targetEntityType === 'pf') {
         setLoadingStatus(`🎯 Rastreando menções públicas de pessoas buscando comprar "${effectiveTerm}"...`);
         await new Promise((r) => setTimeout(r, 150));
-        response = await searchB2CLeads(effectiveTerm, effectiveLoc, leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces);
+        response = await searchB2CLeads(effectiveTerm, effectiveLoc, leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
       } else {
         setLoadingStatus('Extraindo contatos diretos (PF & PJ), intenção de busca e localização...');
         response = await searchGoogleLeads(
@@ -359,6 +367,8 @@ export function ExtractionHero({
           return {
             name: r.name,
             evidence: r.evidence || {},
+            professionalContacts:r.professionalContacts||[],corporateOfficers:r.corporateOfficers||[],companyContactLabel:r.companyContactLabel||'',
+            authorDeclaredLocation:r.authorDeclaredLocation||'',publicationLocation:r.publicationLocation||'',groupContext:r.groupContext||'',
             verificationStatus: r.verificationStatus,
             recordType: r.recordType,
             intent: r.intent,
@@ -407,6 +417,7 @@ export function ExtractionHero({
     } catch (err: any) {
       setError(err.message || 'Erro ao extrair contatos. Verifique sua conexão.');
     } finally {
+      searchLock.current=false;
       setIsLoading(false);
       setLoadingStatus('');
     }
@@ -424,7 +435,7 @@ export function ExtractionHero({
       // Para B2C, sempre pega nova safra via mesma rota (não tem paginação real ainda)
       let response;
       if (targetEntityType === 'pf') {
-        response = await searchB2CLeads(effectiveTerm, locationTerm, leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces);
+        response = await searchB2CLeads(effectiveTerm, locationTerm, leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
       } else {
         response = await searchGoogleLeads(
           effectiveTerm,
@@ -462,6 +473,8 @@ export function ExtractionHero({
             return {
               name: r.name,
             evidence: r.evidence || {},
+            professionalContacts:r.professionalContacts||[],corporateOfficers:r.corporateOfficers||[],companyContactLabel:r.companyContactLabel||'',
+            authorDeclaredLocation:r.authorDeclaredLocation||'',publicationLocation:r.publicationLocation||'',groupContext:r.groupContext||'',
             verificationStatus: r.verificationStatus,
             recordType: r.recordType,
             intent: r.intent,
@@ -1222,6 +1235,7 @@ export function ExtractionHero({
 
         {searchMeta?.warnings?.length ? <div className="mt-3 text-xs text-amber-300">{searchMeta.warnings.map((warning,index) => <p key={index}>{warning}</p>)}</div> : null}
 
+        <RadarExecutionReport report={radarReport} unconfirmed={regionalUnconfirmed}/>
         <MarketplaceInsights signals={marketplaceSignals}/>
 
         {/* Empty state alert */}

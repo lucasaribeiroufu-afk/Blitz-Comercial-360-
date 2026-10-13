@@ -24,17 +24,18 @@ test('Shopee seller shipping origin and sold count never become a regional buyer
 test('marketplace-only job is asynchronous and its signals never enter the contact list',async()=>{
  let count=0;
  const fetcher=async(url,opts)=>{
+  if(url.includes('/acts/')&&!url.includes('/runs?'))return {ok:true,json:async()=>({data:{pricingInfos:[{pricingModel:'PAY_PER_EVENT'}]}})};
   if(url.includes('/runs?'))return {ok:true,json:async()=>({data:{id:`fixture-run-${++count}`}})};
   if(url.includes('/actor-runs/'))return {ok:true,json:async()=>({data:{status:'SUCCEEDED',defaultDatasetId:'fixture-shopee'}})};
   if(url.includes('/datasets/'))return {ok:true,json:async()=>[{nome:'Tinta impermeabilizante fixture',preco:100,url:shopeeUrl}]};
   throw Error('Unexpected request');
  };
- const start=await startSocialRadar({includeMarketplaces:true,query:'tinta impermeabilizante',location:'Uberlândia-MG',sourceUrls:[shopeeUrl]},{apifyToken:'fixture',fetcher,serperKey:''});
- assert.equal(start.done,false);const r=await pollSocialRadar({job:start.job},{apifyToken:'fixture',fetcher});assert.equal(r.done,true);assert.equal(r.leads.length,0);assert.equal(r.marketplaceSignals.length,1);
+ const start=await startSocialRadar({includeMarketplaces:true,query:'tinta impermeabilizante',location:'Uberlândia-MG',sourceUrls:[shopeeUrl]},{paidPermit:{actorUsd:0.1,maxActors:5,serperQueries:2},apifyToken:'fixture',fetcher,serperKey:''});
+ assert.equal(start.done,false);const r=await pollSocialRadar({job:start.job},{paidPermit:{actorUsd:0.1,maxActors:5,serperQueries:2},apifyToken:'fixture',fetcher});assert.equal(r.done,true);assert.equal(r.leads.length,0);assert.equal(r.marketplaceSignals.length,1);
 });
 test('dataset read failure terminates with an explicit warning instead of polling forever',async()=>{
  const job=issueJob({query:'tinta',location:'Uberlândia-MG',count:5,runs:[{platform:'shopee',runId:'fixture',url:shopeeUrl}],warnings:[],expiresAt:Date.now()+1000},'fixture');
- const r=await pollSocialRadar({job},{apifyToken:'fixture',fetcher:async url=>url.includes('actor-runs')?{ok:true,json:async()=>({data:{status:'SUCCEEDED',defaultDatasetId:'fixture'}})}:{ok:false,status:403}});
+ const r=await pollSocialRadar({job},{paidPermit:{actorUsd:0.1,maxActors:5,serperQueries:2},apifyToken:'fixture',fetcher:async url=>url.includes('actor-runs')?{ok:true,json:async()=>({data:{status:'SUCCEEDED',defaultDatasetId:'fixture'}})}:{ok:false,status:403}});
  assert.equal(r.done,true);assert.equal(r.leads.length,0);assert.ok(r.meta.warnings.some(w=>w.includes('HTTP 403')));
 });
 test('business collector extracts literal public contact links and never expands to a different identity',async()=>{

@@ -1,3 +1,4 @@
+import {structuralPhone} from './professionalContacts.js';
 import {enrichBusinessContacts} from './businessContacts.js';
 /** Evidence-only collection. No model output or synthetic database is used here. */
 import https from 'node:https';
@@ -40,10 +41,11 @@ export function publicIp(ip) {
   // Reject mapped IPv4 and all non-global IPv6, including loopback, ULA and link-local.
   return net.isIP(ip) === 6 && /^2[0-9a-f]{3}:/i.test(ip);
 }
-export async function readPublicPage(rawUrl, redirects = 0, deadline = Date.now() + 8000) {
+export async function readPublicPage(rawUrl, redirects = 0, deadline = Date.now() + 8000, options = {}) {
   let url;
   try { url = new URL(rawUrl); } catch { throw new SearchError('URL inválida.', 400); }
   if (url.protocol !== 'https:' || url.username || url.password || (url.port && url.port !== '443')) throw new SearchError('Use uma URL pública HTTPS sem credenciais.', 400);
+  if(options.allowedHosts&&!options.allowedHosts.includes(url.hostname.toLowerCase()))throw new SearchError('Redirecionamento para fonte não autorizada.',400);
   const host = url.hostname.replace(/^\[|\]$/g, '');
   if (Date.now() >= deadline) throw new SearchError('Tempo limite ao ler a fonte.');
   const addresses = net.isIP(host) ? [{ address: host, family: net.isIP(host) }] : await Promise.race([dns.lookup(host, { all: true }), new Promise((_,reject) => { const timer = setTimeout(() => reject(new SearchError('Tempo limite de DNS.')), Math.max(1,deadline-Date.now())); timer.unref(); })]);
@@ -54,10 +56,10 @@ export async function readPublicPage(rawUrl, redirects = 0, deadline = Date.now(
       if ([301,302,303,307,308].includes(res.statusCode)) {
         res.resume();
         if (redirects >= 3 || !res.headers.location) return reject(new SearchError('Redirecionamento não resolvido.'));
-        readPublicPage(new URL(res.headers.location, url).href, redirects + 1, deadline).then(resolve, reject); return;
+        readPublicPage(new URL(res.headers.location, url).href, redirects + 1, deadline, options).then(resolve, reject); return;
       }
-      if (res.statusCode !== 200) { res.resume(); return reject(new SearchError(`Fonte indisponível (HTTP ${res.statusCode}).`)); }
-      if (!String(res.headers['content-type']).includes('text/html')) { res.resume(); return reject(new SearchError('A fonte não é uma página HTML.')); }
+      if (res.statusCode !== 200) { res.resume(); return reject(Object.assign(new SearchError(`Fonte indisponível (HTTP ${res.statusCode}).`),{httpStatus:res.statusCode})); }
+      if (!(options.allowText ? /^(text\/(html|plain|xml)|application\/(rss\+xml|atom\+xml|xml|xhtml\+xml))/i.test(String(res.headers['content-type'])) : String(res.headers['content-type']).includes('text/html'))) { res.resume(); return reject(new SearchError('A fonte não é uma página HTML.')); }
       let size = 0, chunks = [];
       res.on('data', chunk => { size += chunk.length; if (size > 1500000) { req.destroy(new SearchError('Página excede o limite de leitura.')); } else chunks.push(chunk); });
       res.on('error', reject);
@@ -89,13 +91,14 @@ export async function cnpjLookup(raw, deps = {}) {
   const data = await json(url, {}, deps.fetcher), at = new Date().toISOString(), lead = base();
   if (String(data.cnpj).replace(/\D/g, '') !== cnpj || !data.razao_social) throw new SearchError('Resposta cadastral incompatível com o CNPJ consultado.');
   for (const [field,value] of Object.entries({ name: data.nome_fantasia || data.razao_social, company: data.razao_social, cnpj, razao_social: data.razao_social, nome_fantasia: data.nome_fantasia, phone: data.ddd_telefone_1, establishmentPhone: data.ddd_telefone_1, email: data.email, category: data.cnae_fiscal_descricao, socios: (data.qsa || []).map(s => ({ nome: s.nome_socio, qualificacao: s.qualificacao_socio })), location: [data.logradouro, data.numero, data.bairro, data.municipio, data.uf, data.cep].filter(Boolean).join(', ') })) set(lead,field,value,url,'BrasilAPI — cadastro CNPJ (não comprova telefone ativo)',at);
+  lead.corporateOfficers=lead.socios||[];lead.companyContactLabel='Contato cadastral da empresa';lead.phoneStructure=structuralPhone(lead.phone);
   lead.profileUrl = url; lead.platform = 'other'; lead.entityType = 'pj';
   lead.addressComponents = [{longText:data.municipio,types:['administrative_area_level_2']},{shortText:data.uf,types:['administrative_area_level_1']}];
   if (deps.casaKey || process.env.CASA_DOS_DADOS_API_KEY) {
     try {const casa = await casaCnpjLookup({cnpj},deps); lead.casaEvidence = casa.evidence;}
     catch {lead.collectionWarnings = ['Enriquecimento Casa dos Dados indisponível; cadastro BrasilAPI preservado.'];}
   }
-  return lead;
+  lead.corporateOfficers=lead.socios||[];lead.companyContactLabel='Contato cadastral da empresa';return lead;
 }
 function result(leads, p, warnings = []) {
   return { leads, meta: { intent: 'direct_search', summary: leads.length ? `${leads.length} registros coletados com fonte. Campos ausentes não foram inferidos.` : `Nenhum resultado auditado encontrado para ${p.query} em ${p.location || 'Brasil'}. Verifique os termos ou tente outra região.`, targetAudience: 'Registros públicos observados', trendingItems: [], warnings, retrievedAt: new Date().toISOString(), requestedCount: p.count, returnedCount: leads.length } };
@@ -114,7 +117,7 @@ export function matchesLocation(place, location) {
 export async function searchBusinesses(body, deps = {}) {
   const p = input(body);
   if (/^[\d.\/-]+$/.test(p.query)) { const lead = await cnpjLookup(p.query, deps); return result(!p.location || matchesLocation({addressComponents:lead.addressComponents},p.location) ? [lead] : [], p); }
-  if (p.targetEntityType === 'pf') return searchBuyers(body, deps);
+  if (p.targetEntityType === 'pf') {const {startBuyerRadar}=await import('./buyerRadar.js');return startBuyerRadar(body,deps);}
   const key = deps.mapsKey ?? (process.env.GOOGLE_MAPS_API_KEY || process.env.CHAVE_API_DO_GOOGLE_MAPS);
   if (!key) throw new SearchError('Configure GOOGLE_MAPS_API_KEY no servidor e habilite Places API (New).', 503);
   const leads = [], seen = new Set(), excluded = new Set((p.excludeNames || []).map(normalize));
@@ -126,10 +129,10 @@ export async function searchBusinesses(body, deps = {}) {
       // Conservative textual category match. Reject ambiguity instead of substituting another niche.
       const terms = normalize(p.query).split(' ').filter(t => !['de','da','do','e','para','em'].includes(t));
       const searchable = normalize(`${place.displayName.text} ${place.primaryTypeDisplayName?.text || ''}`);
-      if (!terms.length || !terms.every(t => searchable.split(' ').some(w => w === t || (t.length >= 5 && w.slice(0,-1) === t.slice(0,-1))))) continue;
+      if (!terms.length || !terms.every(t => searchable.split(' ').some(w => w === t || w === t+'s' || t === w+'s' || (t.length >= 5 && w.slice(0,-1) === t.slice(0,-1))))) continue;
       seen.add(place.id);
       const lead = base(), at = new Date().toISOString(), url = place.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.displayName.text)}&query_place_id=${encodeURIComponent(place.id)}`;
-      lead.platform = 'google_maps'; lead.entityType = 'pj'; lead.profileUrl = url;
+      lead.platform = 'google_maps'; lead.entityType = 'pj'; lead.companyContactLabel = 'Contato da empresa'; lead.profileUrl = url;
       for (const [field,value] of Object.entries({ name:place.displayName.text, location:place.formattedAddress, phone:place.nationalPhoneNumber, establishmentPhone:place.nationalPhoneNumber, rating:place.rating, reviewsCount:place.userRatingCount, website:place.websiteUri, category:place.primaryTypeDisplayName?.text })) set(lead,field,value,url,'Google Places',at);
       leads.push(lead);
     }
@@ -166,32 +169,8 @@ export function buyerExcerpt(text, query, location) {
   return '';
 }
 export async function searchBuyers(body, deps = {}) {
-  const p = input(body), key = deps.serperKey ?? process.env.SERPER_API_KEY;
-  if (!key) throw new SearchError('Configure SERPER_API_KEY no servidor. Busca B2C não usa dados gerados por IA.',503);
-  const data = await json('https://google.serper.dev/search',{method:'POST',headers:{'Content-Type':'application/json','X-API-KEY':key},body:JSON.stringify({q:`"${p.query}" ${p.location} ("quero comprar" OR "procuro" OR "onde comprar")`,gl:'br',hl:'pt-br',num:Math.min(20,p.count+p.offset)})},deps.fetcher);
-  const leads = [], warnings = [], seen = new Set();
-  const items = (data.organic || []).slice(0,20).filter(item => { if (!item.link || seen.has(item.link)) return false; seen.add(item.link); return true; });
-  // Four bounded workers keep the worst case within the serverless duration budget.
-  let cursor = 0;
-  await Promise.all(Array.from({length: Math.min(4,items.length)},async () => {
-    while (cursor < items.length) {
-      const item = items[cursor++];
-      try {
-        const page = await (deps.readPage || readPublicPage)(item.link), parsed = parsePage(page.html);
-        const excerpt = parsed.blocks.map(block => buyerExcerpt(block,p.query,p.location)).find(Boolean);
-        if (!excerpt) continue;
-        const lead = base(), at = new Date().toISOString();
-        lead.profileUrl = page.url; lead.recordType = 'purchase_mention';
-        set(lead,'name',parsed.title || 'Menção em página pública',page.url,'Título da fonte; autor não confirmado',at);
-        set(lead,'intent',excerpt,page.url,'Texto HTML público',at,excerpt);
-        lead.trendingInsights = [`Trecho observado (intenção não confirma compra atual): ${excerpt}`];
-        leads.push(lead);
-      } catch { warnings.push(`Fonte não verificável: ${item.link}`); }
-    }
-  }));
-  leads.sort((a,b) => a.profileUrl.localeCompare(b.profileUrl));
-
-  return result(leads.slice(p.offset,p.offset+p.count),p,[...warnings,'APIFY_API_TOKEN ausente: somente leitura de páginas indexadas; comentários sociais não foram coletados.','Menções públicas, não contatos pessoais confirmados. Páginas privadas, dinâmicas ou bloqueadas não são coletadas. Data da publicação e identidade do comprador não inferidas.']);
+  const {startBuyerRadar}=await import('./buyerRadar.js');
+  return startBuyerRadar(body,deps);
 }
 export function makeHandler(operation) {
   return async (req,res) => {
@@ -218,5 +197,5 @@ export async function casaCnpjLookup(body, deps = {}) {
  const lead=base(),at=new Date().toISOString();lead.profileUrl=url;lead.platform='other';lead.entityType='pj';
  const e=data.endereco||{};
  for(const [field,value] of Object.entries({cnpj,name:data.nome_fantasia||data.razao_social,razao_social:data.razao_social,nome_fantasia:data.nome_fantasia,location:[e.logradouro,e.numero,e.bairro,e.municipio,e.uf].filter(Boolean).join(', '),socios:(data.quadro_societario||[]).map(s=>({nome:s.nome,qualificacao:s.qualificacao_socio}))}))set(lead,field,value,url,'Casa dos Dados — CNPJ exato',at);
- return lead;
+ lead.corporateOfficers=lead.socios||[];lead.companyContactLabel='Contato cadastral da empresa';return lead;
 }

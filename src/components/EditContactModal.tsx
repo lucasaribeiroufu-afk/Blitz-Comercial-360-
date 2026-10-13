@@ -85,7 +85,7 @@ export function EditContactModal({
     try {
       await onSave(contact.id!, {
         name: name.trim(),
-        evidence: {},
+        evidence: {}, professionalContacts: [], corporateOfficers: [],
         entityType,
         phone: phone.trim(),
         email: email.trim() || undefined,

@@ -6,6 +6,7 @@ import dotenv from 'dotenv';
 import { makeHandler, searchBusinesses, searchBuyers, extractWebsite, cnpjLookup, resolvePublicPhone, casaCnpjLookup } from './src/server/verifiedSearch.js';
 import { auditContactVeracity } from './src/utils/contactVeracityAuditor';
 import {socialRadar,startSocialRadar} from './src/server/socialRadar.js';
+import {startBuyerRadar} from './src/server/buyerRadar.js';
 import {sourceStatus} from './src/server/sourceStatus.js';
 dotenv.config();
 async function startServer() {
@@ -13,7 +14,7 @@ async function startServer() {
   app.use(express.json({limit: '32kb'}));
   app.get('/api/health', (_req,res) => res.json({status:'ok',mode:'evidence-only'}));
   app.post(['/api/deep-search','/api/ai/deep-search'], protectedHandler(searchBusinesses));
-  app.post(['/api/b2c-search','/api/b2c-multifactor-search'], protectedHandler((body,deps) => process.env.APIFY_API_TOKEN ? startSocialRadar(body,deps) : searchBuyers(body,deps)));
+  app.post(['/api/b2c-search','/api/b2c-multifactor-search'], protectedHandler(startBuyerRadar));
   app.post('/api/social-radar',protectedHandler(socialRadar));
   app.get('/api/source-status',(_req,res) => res.json(sourceStatus()));
   app.post('/api/extract-url', protectedHandler(extractWebsite));

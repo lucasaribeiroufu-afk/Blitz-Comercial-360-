@@ -1,3 +1,7 @@
+# Radar econômico e contatos profissionais
+
+Consulte [operação e variáveis](docs/RADAR_OPERACAO.md), [componentes/licenças](docs/COMPONENTES_AVALIADOS.md) e o relatório de execução no radar. A etapa B2C paga agora exige orçamento persistente explícito; chaves sozinhas não iniciam cobrança. O diagnóstico histórico de zero resultados em Paracatu é incompleto.
+
 # Blitz Comercial 360 — coleta com proveniência
 
 O motor de prospecção coleta respostas de provedores e páginas públicas. Não utiliza IA para inventar cadastros nem bancos estáticos de supostos compradores. Campos não encontrados ficam vazios. Erros de provedor são exibidos e não geram contatos substitutos.
@@ -8,8 +12,8 @@ O motor de prospecção coleta respostas de provedores e páginas públicas. Nã
 | --- | --- | --- | --- |
 | B2B `/api/deep-search` | Google Places (New) | Nome, endereço, telefone publicado, site, categoria, avaliação e quantidade de avaliações quando presentes | Filtra município/UF e categoria conservadoramente. Uma empresa listada não demonstra intenção de compra. |
 | CNPJ `/api/buscar` ou CNPJ no campo de busca | BrasilAPI | Nome fantasia/razão social, endereço, telefone cadastral, email e QSA se publicados | Consulta CNPJ exato, com dígitos verificadores. Não relaciona CNPJ por semelhança de nomes. QSA não identifica automaticamente comprador/decisor. |
-| Radar social `/api/b2c-multifactor-search` + `/api/social-radar` | Serper descobre URLs; Apify coleta dados estruturados de Facebook, Instagram e TikTok | Autor público, perfil, texto do post/comentário, data quando presente e telefone/email oferecido pelo próprio autor | Classificação heurística de produto/intenção. Região deve ser declarada no texto; grupo local não comprova residência. Uma origem por plataforma, até três origens sociais por execução. |
-| B2C sem token Apify | Serper + leitura do HTML público | Título e trecho original, com autor não confirmado | Caminho limitado a páginas indexadas. Aviso informa que comentários sociais não foram coletados. |
+| Radar social `/api/b2c-multifactor-search` + `/api/social-radar` | Serper descobre URLs; Apify coleta dados estruturados de Facebook, Instagram e TikTok | Autor público, perfil, texto do post/comentário, data quando presente e telefone/email oferecido pelo próprio autor | Classificação heurística de produto/intenção. Região deve ser declarada no texto; grupo local não comprova residência. Fila deduplicada de múltiplas URLs, com limite explícito de runs e orçamento persistente. |
+| B2C público | Cache + leitura HTTP de HTML/feeds autorizados | Título e trecho original, com autor não confirmado | Caminho limitado a páginas indexadas. Aviso informa que comentários sociais não foram coletados. |
 | `/api/casa-cnpj` | Casa dos Dados v4 | CNPJ exato, nome, endereço e QSA | Não associa sócio a intenção de compra nem adivinha telefone pessoal. |
 | Link direto `/api/extract-url` | HTML + JSON-LD de uma única organização | Título e campos declarados pela organização, quando identificada | Sem JSON-LD inequívoco, coleta apenas o título. Não executa JavaScript de páginas nem acessa grupos privados. |
 | Consulta de telefone `/api/contacts/resolve-phone` | BrasilAPI | Telefone cadastral do CNPJ informado | Não comprova linha ativa ou WhatsApp. |
@@ -30,11 +34,11 @@ npm run dev
 
 Abra `http://localhost:3000`. Informe as chaves na cópia local de `.env`, sem adicioná-la ao Git.
 
-## Configurar na Vercel
+## Fontes e hospedagem (seguir também o guia de orçamento acima)
 
 1. Abra o projeto Blitz Comercial 360 na Vercel.
 2. Em **Settings > Environment Variables**, confirme `GOOGLE_MAPS_API_KEY` (ou o nome antigo `CHAVE_API_DO_GOOGLE_MAPS`), `SERPER_API_KEY`, `APIFY_API_TOKEN` e, opcionalmente, `CASA_DOS_DADOS_API_KEY` para Preview e Production, conforme as fontes que pretende usar. Não envie as chaves pelo chat. Não use prefixo `VITE_` para essas chaves.
-3. A chave Google precisa permitir **Places API (New)** e ter faturamento/quota disponíveis. A fonte Serper exige conta/chave própria. Apify precisa de saldo/permissão nos Actors `apify/facebook-groups-scraper`, `apify/instagram-comment-scraper` e `clockworks/tiktok-comments-scraper`. A execução é assíncrona, com duração máxima de quatro minutos por Actor, e a interface acompanha o resultado. O teto padrão é US$ 0,50 por Actor (até cinco por busca), ajustável em `BLITZ_APIFY_MAX_USD_PER_RUN`. A BrasilAPI não exige chave.
+3. A chave Google precisa permitir **Places API (New)** e ter faturamento/quota disponíveis. A fonte Serper exige conta/chave própria. Apify precisa de saldo/permissão nos Actors `apify/facebook-groups-scraper`, `apify/instagram-comment-scraper` e `clockworks/tiktok-comments-scraper`. A execução é assíncrona, com duração máxima de quatro minutos por Actor, e a interface acompanha o resultado. O teto por Actor e o orçamento global precisam ser explicitamente configurados conforme o guia de operação. Actors com modelo financeiro não comprovado são bloqueados. A BrasilAPI não exige chave.
 4. O arquivo `vercel.json` define build, pasta `dist`, funções `/api` e navegação SPA. O Express atende as mesmas rotas no desenvolvimento local.
 5. Faça o deploy da branch de revisão e valide o Preview antes de integrar em `main`. O endereço atual da produção não é automaticamente corrigido pela criação da branch/PR.
 6. Execute uma consulta B2B com nicho e `Cidade - UF`, uma consulta de CNPJ e uma B2C. Confira cada URL e o campo de origem. Resultados menores que a quantidade pedida são esperados quando faltam evidências.
