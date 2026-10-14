@@ -25,3 +25,7 @@ Somente se HTTP não resolver uma necessidade demonstrada: fila persistente aute
 Nenhum componente dá acesso ao histórico individual de pesquisas do Google. Não há enumeração de contas privadas, reconhecimento facial, correlação por nome/foto/username, vazamentos, infostealer logs ou arquivos expostos. Perguntas anônimas, produtos, avaliações e volumes vendidos nos marketplaces permanecem sinais de mercado, sem contato de comprador.
 
 Foram consultadas também as páginas de lançamentos de [TikTok-Api](https://github.com/davidteather/TikTok-Api/releases), [Instaloader](https://github.com/instaloader/instaloader/releases), [Crawlee](https://github.com/apify/crawlee/releases) e [facebook-scraper](https://github.com/kevinzg/facebook-scraper/releases). Há lançamentos documentados de TikTok-Api, Instaloader e Crawlee; o facebook-scraper não apresenta releases nessa página. Isso não comprova manutenção suficiente nem funcionamento atual da coleta. Teste real e revisão da versão exata continuam necessários antes de selecionar um worker.
+
+## Atualização de 14/10/2026
+
+A tabela acima registra a avaliação de 13/10. O novo [relatório dos coletores](COLETORES_SOCIAIS.md) documenta testes atuais de Crawlee/Instaloader, a seleção do runtime Playwright e o worker entregue, com bloqueios reais por plataforma. A arquitetura deixou de ser apenas proposta: há código/Dockerfile/conexão testados localmente, mas **a coleta externa continua não comprovada**. Veja também a [avaliação do Revealer](REVEALER_AVALIACAO.md); nenhuma chamada de busca autenticada foi integrada.

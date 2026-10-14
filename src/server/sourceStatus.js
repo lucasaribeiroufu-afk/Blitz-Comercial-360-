@@ -1,6 +1,8 @@
 import { paidLimits } from "./radarStore.js";
 export function sourceStatus() {
   return {
+    socialWorker: !!(process.env.SOCIAL_WORKER_URL && process.env.SOCIAL_WORKER_TOKEN),
+    socialWorkerStatus: process.env.SOCIAL_WORKER_URL && process.env.SOCIAL_WORKER_TOKEN ? "configurado; acesso não verificado" : "worker não configurado",
     publicHttpConfigured: !!process.env.BLITZ_PUBLIC_ALLOWED_HOSTS,
     paidBudgetConfigured: paidLimits().enabled,
     persistentBudgetConfigured: !!process.env.BLITZ_FIREBASE_SERVICE_ACCOUNT,

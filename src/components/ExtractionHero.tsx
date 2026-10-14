@@ -126,6 +126,7 @@ export function ExtractionHero({
   const [regionalUnconfirmed,setRegionalUnconfirmed]=useState<ExtractedResult[]>([]);
   const updateExecution=(report:ExecutionReport,unknown:ExtractedResult[])=>{setRadarReport(report);setRegionalUnconfirmed(unknown);};
   const [marketplaceSignals,setMarketplaceSignals]=useState<MarketplaceSignal[]>([]);
+  const [pendingSocialSources,setPendingSocialSources]=useState<Array<{platform:string;url:string}>>([]);
   const [socialSourceLinks,setSocialSourceLinks] = useState('');
   const socialSourceUrls = socialSourceLinks.split(/\s+/).filter(Boolean);
   const [leadCount, setLeadCount] = useState<number>(4);
@@ -186,6 +187,7 @@ export function ExtractionHero({
     if (clearTrigger && clearTrigger > 0) {
       setExtractedList([]);
     setMarketplaceSignals([]);
+    setPendingSocialSources([]);
       setSearchMeta(null);
       setSavedIds(new Set());
       setError(null);
@@ -287,6 +289,7 @@ export function ExtractionHero({
   const handleClearResults = () => {
     setExtractedList([]);
     setMarketplaceSignals([]);
+    setPendingSocialSources([]);
     setSearchMeta(null);
     setSavedIds(new Set());
     setError(null);
@@ -309,6 +312,7 @@ export function ExtractionHero({
     setIsLoading(true);
     setExtractedList([]);
     setMarketplaceSignals([]);
+    setPendingSocialSources([]);
     setSearchMeta(null);
     setSavedIds(new Set());
     setCurrentPage(1);
@@ -344,6 +348,7 @@ export function ExtractionHero({
         );
       }
 
+      setPendingSocialSources(response.pendingSources || []);
       setExtractedList(response.leads);
       setMarketplaceSignals(response.marketplaceSignals || []);
       setHarvestedNames(response.leads.map(l => l.name));
@@ -432,10 +437,10 @@ export function ExtractionHero({
     const nextPage = currentPage + 1;
 
     try {
-      // Para B2C, sempre pega nova safra via mesma rota (não tem paginação real ainda)
+      // Para B2C, prioriza fontes pendentes explicitamente retornadas pelo worker.
       let response;
       if (targetEntityType === 'pf') {
-        response = await searchB2CLeads(effectiveTerm, locationTerm, leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
+        response = await searchB2CLeads(effectiveTerm, locationTerm, leadCount, pendingSocialSources.length ? pendingSocialSources.map(s=>s.url) : socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
       } else {
         response = await searchGoogleLeads(
           effectiveTerm,
@@ -452,6 +457,10 @@ export function ExtractionHero({
         );
       }
 
+      setPendingSocialSources(response.pendingSources || []);
+      const evidenceKey=(r:ExtractedResult)=>`${r.platform}:${r.profileUrl}:${r.authorProfileUrl || r.name}:${r.intent || ''}`;
+      const alreadyShown=new Set(extractedList.map(evidenceKey));
+      response.leads=response.leads.filter((r:ExtractedResult)=>{const key=evidenceKey(r);if(alreadyShown.has(key))return false;alreadyShown.add(key);return true;});
       if (response.leads && response.leads.length > 0) {
         const newTotalList = [...extractedList, ...response.leads];
         setExtractedList(newTotalList);
@@ -531,6 +540,7 @@ export function ExtractionHero({
     setIsLoading(true);
     setExtractedList([]);
     setMarketplaceSignals([]);
+    setPendingSocialSources([]);
     setSearchMeta(null);
     setSavedIds(new Set());
 
@@ -1236,6 +1246,7 @@ export function ExtractionHero({
         {searchMeta?.warnings?.length ? <div className="mt-3 text-xs text-amber-300">{searchMeta.warnings.map((warning,index) => <p key={index}>{warning}</p>)}</div> : null}
 
         <RadarExecutionReport report={radarReport} unconfirmed={regionalUnconfirmed}/>
+        {!!pendingSocialSources.length && <p className="mt-2 text-xs text-amber-300">{pendingSocialSources.length} fontes públicas pendentes. “Buscar Mais” consulta essas fontes dentro dos limites. <button type="button" disabled={isLoading || isLoadingMore} onClick={()=>{setSocialSourceLinks(pendingSocialSources.map(s=>s.url).join('\n'));setPendingSocialSources([]);}} className="underline">Usar próximas fontes no campo de busca</button>. Nenhum pedido é iniciado automaticamente.</p>}
         <MarketplaceInsights signals={marketplaceSignals}/>
 
         {/* Empty state alert */}

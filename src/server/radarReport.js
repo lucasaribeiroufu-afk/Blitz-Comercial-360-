@@ -30,6 +30,11 @@ export function sourceReport(source, extra = {}) {
     ...extra,
   };
 }
+export function mentionKey(record, platform = record.platform) {
+  let url = record.publicationUrl || record.sourceUrl || record.profileUrl;
+  try {const u=new URL(url);u.search="";u.hash="";url=u.href.replace(/\/$/,"");}catch{}
+  return `${platform}:${url}:${record.authorUrl || record.authorProfileUrl || record.name}:${String(record.text || record.intent || "").trim()}`;
+}
 export function classifyRecords(
   records,
   platform,
@@ -66,7 +71,7 @@ export function classifyRecords(
       report.discarded.autor_ausente++;
       continue;
     }
-    const key = `${record.sourceUrl}:${record.id || record.text}`;
+    const key = mentionKey(record, platform);
     if (seen.has(key)) {
       report.discarded.duplicidade++;
       continue;
@@ -129,7 +134,7 @@ export function finishReport(sources, leads, done = true) {
       s.kind !== "discovery" &&
       s.kind !== "control" &&
       s.kind !== "market" &&
-      ["complete", "no_matches"].includes(s.status),
+      ["complete", "no_matches", "limited"].includes(s.status) && (s.status !== "limited" || s.received > 0),
   );
   const state = !done
     ? "running"

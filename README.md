@@ -104,3 +104,7 @@ A busca B2B consulta até três páginas do Google Places e considera até três
 BBOT foi avaliado como ferramenta de varredura de infraestrutura, sem função necessária para qualificar intenção de compra. Não foi incorporado. Tookie/PhoneIntel/SmartImage não resolvem ausência de contato ou prova de identidade; nenhum identificador pessoal é correlacionado por coincidência de apelido. EmailOSINT e GrayHatWarfare não são fontes deste projeto.
 
 Integração: esta revisão deve permanecer em branch separada e pull request até a revisão do responsável. Merge em `main` e publicação na Vercel não fazem parte desta etapa. Os resultados da validação desta aplicação estão descritos na solicitação de pull request; as consultas reais às APIs ainda precisam ser comprovadas com as credenciais das respectivas fontes.
+
+## Worker social opcional e avaliação Revealer
+
+Veja [Coletores sociais: implantação, testes reais e bloqueios](docs/COLETORES_SOCIAIS.md) e [Revealer: escopo, endpoint, custo e teste sem consumo automático](docs/REVEALER_AVALIACAO.md). O worker não foi implantado; a coleta das três redes continua pendente de validação pública permitida. A ausência de conexão é exibida como “worker não configurado”.

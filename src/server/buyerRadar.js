@@ -1,6 +1,7 @@
 import { SearchError, normalize } from "./verifiedSearch.js";
 import { startSocialRadar, pollSocialRadar, verifyJob } from "./socialRadar.js";
 import { productQuery } from "./purchaseIntent.js";
+import {collectSocialWorker, socialPlatform} from "./socialWorker.js";
 import { collectPublicUrl } from "./publicBuyerSources.js";
 import {
   radarKey,
@@ -14,6 +15,7 @@ import {
   classifyRecords,
   finishReport,
   manualSearchLinks,
+  mentionKey,
 } from "./radarReport.js";
 const inflight = new Map();
 const ttl = () =>
@@ -74,6 +76,7 @@ function answer(
     leads,
     regionalUnconfirmed,
     marketplaceSignals: [],
+    pendingSources: [],
     ...extra,
     meta: {
       intent: "b2c_consumer",
@@ -121,13 +124,14 @@ export async function startBuyerRadar(body, deps = {}) {
     ]),
   ];
   const key = radarKey({
-    version: 2,
+    version: 3,
     userId: deps.userId || "",
     query: normalize(query),
     location: normalize(location),
     count,
     urls: [...urls].sort(),
     markets: !!body.includeMarketplaces,
+    worker: !!process.env.SOCIAL_WORKER_URL,
   });
   if (inflight.has(key)) return inflight.get(key);
   const promise = execute(
@@ -143,6 +147,7 @@ export async function startBuyerRadar(body, deps = {}) {
   }
 }
 async function execute(body, key, deps) {
+  deps = {...deps, deadline: Math.min(deps.deadline || Infinity, Date.now()+45000)};
   const sources = [],
     leads = [],
     unknown = [],
@@ -183,8 +188,31 @@ async function execute(body, key, deps) {
       }),
     );
   }
+  let pendingSources = [];
+  const socialUrls = body.sourceUrls.filter(socialPlatform);
+  function consumeWorker(worker) {
+    pendingSources = [...pendingSources,...(worker.pending || [])].slice(0,9);
+    for (const raw of worker.reports) {
+      const report = sourceReport(raw.source || "Worker social", {...raw, kind:"content"});
+      // Discard counters must be owned by the classifier, not trusted from a worker.
+      report.discarded = sourceReport("x").discarded;
+      sources.push(report);
+      const rows = worker.records.filter(r => r.platform === raw.platform && (r.collectionUrl || r.sourceUrl) === raw.url);
+      report.normalized = rows.length;
+      const classified = classifyRecords(rows, raw.platform, body.query, body.location, report, {seen,now});
+      leads.push(...classified.leads);unknown.push(...classified.regionalUnconfirmed);
+    }
+  }
+  if(socialUrls.length || !body.sourceUrls.length) try {
+    const worker = await (deps.collectWorker || collectSocialWorker)({...body, sourceUrls:socialUrls},deps);
+    consumeWorker(worker);
+  } catch (err) {
+    sources.push(sourceReport("Worker social",{status:"blocked",errors:[err.message]}));
+  }
+  // Generic HTTP is for non-social feeds; social URLs use their own public DOM adapters.
+  const publicUrls = body.sourceUrls.filter(url => !socialPlatform(url));
   const readLimit = 2;
-  for (const url of body.sourceUrls.slice(0, readLimit)) {
+  for (const url of publicUrls.slice(0, readLimit)) {
     const report = sourceReport("Página/feed público", { url });
     sources.push(report);
     const cacheKey = radarKey({ userId: deps.userId || "", url }),
@@ -228,12 +256,12 @@ async function execute(body, key, deps) {
       );
     }
   }
-  if (body.sourceUrls.length > readLimit)
+  if (publicUrls.length > readLimit)
     sources.push(
       sourceReport("Páginas adicionais", {
         status: "limited",
         limits: [
-          `Até ${readLimit} URLs públicas por execução; ${body.sourceUrls.length - readLimit} não lidas nesta etapa.`,
+          `Até ${readLimit} URLs públicas por execução; ${publicUrls.length - readLimit} não lidas nesta etapa.`,
         ],
       }),
     );
@@ -274,7 +302,11 @@ async function execute(body, key, deps) {
     body.query,
     body.location,
   );
-  if (leads.length >= body.count) return result;
+  if (leads.length >= body.count) {result.pendingSources = pendingSources;return result;}
+  if (pendingSources.length) {
+    result.pendingSources = pendingSources;
+  }
+  const respond = () => answer(leads, unknown, sources, body.query, body.location, true, {pendingSources});
   const limits = deps.limits || paidLimits(),
     token = deps.apifyToken ?? process.env.APIFY_API_TOKEN;
   const gate = sourceReport("Etapa paga", {
@@ -288,17 +320,17 @@ async function execute(body, key, deps) {
     gate.limits.push(
       "Orçamento ausente ou inconsistente; nenhuma API paga foi chamada.",
     );
-    return answer(leads, unknown, sources, body.query, body.location);
+    return respond();
   }
   if (!store) {
     gate.limits.push(
       "Controle persistente não configurado; APIs pagas bloqueadas para garantir teto diário e duplicidade na Vercel.",
     );
-    return answer(leads, unknown, sources, body.query, body.location);
+    return respond();
   }
   if (!token) {
     gate.limits.push("APIFY_API_TOKEN ausente.");
-    return answer(leads, unknown, sources, body.query, body.location);
+    return respond();
   }
   // Conservative monetary reservation persists even on timeouts; uncertain charges are never refunded automatically.
   let reservation;
@@ -306,7 +338,7 @@ async function execute(body, key, deps) {
     reservation = await store.reserve(key, limits, now);
   } catch (err) {
     gate.limits.push(err.message);
-    return answer(leads, unknown, sources, body.query, body.location);
+    return respond();
   }
   if (reservation.duplicate) {
     if (reservation.execution.response) return reservation.execution.response;
@@ -322,7 +354,7 @@ async function execute(body, key, deps) {
   gate.limits.push(
     "Reserva conservadora, não é custo faturado. Saldo não é presumido gratuito.",
   );
-  const deadline = Date.now() + 24000;
+  const deadline = Math.min(deps.deadline, Date.now() + 24000);
   // Documented account limits/usage endpoint is consulted, but limits are not a wallet balance.
   try {
     const response = await (deps.fetcher || fetch)(
@@ -353,7 +385,7 @@ async function execute(body, key, deps) {
     if (err instanceof SearchError) {
       gate.limits.push(err.message);
       await store.finish(key);
-      return answer(leads, unknown, sources, body.query, body.location);
+      return respond();
     }
   }
   try {
@@ -363,6 +395,11 @@ async function execute(body, key, deps) {
         ...deps,
         deadline,
         paidPermit: limits,
+        collectDiscovered: async(urls) => {
+          const worker = await (deps.collectWorker || collectSocialWorker)({...body,sourceUrls:urls}, {...deps,deadline});
+          consumeWorker(worker);
+          return leads.length >= body.count;
+        },
         reports: sources,
         executionKey: key,
       },
@@ -376,7 +413,7 @@ async function execute(body, key, deps) {
       body.query,
       body.location,
       !paid.job,
-      { job: paid.job },
+      { job: paid.job, pendingSources },
     );
     await store.put(key, {
       response: result,
@@ -392,7 +429,7 @@ async function execute(body, key, deps) {
     gate.errors.push(
       err instanceof SearchError ? err.message : "Falha da etapa paga.",
     );
-    result = answer(leads, unknown, sources, body.query, body.location);
+    result = respond();
     await store.put(key, { response: result, expiresAt: now + ttl() });
     if (!sources.some((s) => s.startUncertain || s.runId))
       await store.finish(key);
@@ -426,7 +463,7 @@ export async function pollBuyerRadar(body, deps = {}) {
   const seen = new Set(),
     leads = [];
   for (const lead of [...old.freeLeads, ...paid.leads]) {
-    const key = `${lead.profileUrl}:${lead.evidence.intent?.recordId || lead.intent}`;
+    const key = mentionKey(lead);
     if (seen.has(key)) {
       const source =
         reports.find((s) => s.runId === lead.evidence.intent?.recordId) ||
@@ -444,7 +481,7 @@ export async function pollBuyerRadar(body, deps = {}) {
     job.query,
     job.location,
     paid.done,
-    { job: body.job, marketplaceSignals: paid.marketplaceSignals },
+    { job: body.job, marketplaceSignals: paid.marketplaceSignals, pendingSources:old.response?.pendingSources || [] },
   );
   await store.put(job.executionKey, {
     response: result,

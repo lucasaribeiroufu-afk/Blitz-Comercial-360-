@@ -305,15 +305,16 @@ export function qualifySocialRecord(
     geographicStatus: region.status,
     purchaseIntentClassification: assessment.classification,
   };
+  retrievedAt = record.retrievedAt || retrievedAt;
   function set(field, value, excerpt = record.text) {
     lead[field] = value;
     lead.evidence[field] = {
       value,
       sourceUrl: record.sourceUrl,
       source:
-        platform === "website"
+        record.collector || (platform === "website"
           ? "Fonte pública estruturada"
-          : `Apify — ${actors[platform]}`,
+          : `Apify — ${actors[platform]}`),
       retrievedAt,
       excerpt,
       recordId: String(record.id || ""),
@@ -411,7 +412,14 @@ export async function startSocialRadar(body, deps = {}) {
       "Use links de grupo Facebook, post/reel Instagram ou vídeo TikTok públicos.",
       400,
     );
-  // One source per platform and capped rows: breadth grows through subsequent targeted runs.
+  if (discovery.sources.length && deps.collectDiscovered && (!deps.deadline || Date.now() < deps.deadline-1000)) {
+    try {
+      if(await deps.collectDiscovered(discovery.sources.map(s=>s.url)))return {done:true,leads:[],meta:{warnings:discovery.warnings}};
+    } catch(err) {
+      deps.reports?.push(sourceReport("Worker — fontes descobertas",{status:"blocked",errors:[err.message]}));
+    }
+  }
+  // Queue multiple sources per platform; paid fallback remains bounded by the reservation.
   const queued = [
     ...new Map(sources.map((s) => [s.platform + ":" + s.url, s])).values(),
   ].concat(markets.plans);

@@ -96,7 +96,7 @@ export async function collectPublicUrl(raw, deps = {}) {
       400,
     );
   deps.onAttempt?.();
-  const deadline = Date.now() + 8000;
+  const deadline = Math.min(deps.deadline || Infinity, Date.now() + 8000);
   const reader =
     deps.readPage ||
     ((u) =>
