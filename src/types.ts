@@ -2,9 +2,11 @@ export type ContactStatus = 'new' | 'contacted' | 'meeting' | 'qualified' | 'unr
 
 export type EntityType = 'pj' | 'pf' | 'both';
 
-export type PlatformType = 'google_maps' | 'google_business' | 'google_search' | 'linkedin' | 'instagram' | 'website' | 'other';
+export type PlatformType = 'google_maps' | 'google_business' | 'google_search' | 'linkedin' | 'instagram' | 'website' | 'facebook' | 'tiktok' | 'other';
 
-export interface Contact {
+export interface FieldEvidence {value: unknown; sourceUrl: string; source: string; retrievedAt: string; excerpt: string;}
+export interface Provenance {professionalContacts?:ProfessionalContact[];corporateOfficers?:Array<{nome:string;qualificacao:string}>;companyContactLabel?:string;authorDeclaredLocation?:string;publicationLocation?:string;groupContext?:string;evidence?: Record<string, FieldEvidence>; verificationStatus?: 'source_observed'; recordType?: 'purchase_mention'|'marketplace_product'|'marketplace_question'; intent?: string; authorProfileUrl?: string; publishedAt?: string; geographicStatus?: string; matchedProduct?: string;}
+export interface Contact extends Provenance {
   id?: string;
   name: string;
   cnpj?: string;
@@ -48,7 +50,7 @@ export interface Contact {
   website?: string | null;
 }
 
-export interface ExtractedResult {
+export interface ExtractedResult extends Provenance {
   name: string;
   cnpj?: string;
   phone: string;
@@ -90,6 +92,11 @@ export interface SearchIntelligenceMeta {
   targetAudience: string;
   trendingItems?: string[];
   suggestedPitch?: string;
+  warnings?: string[];
+  executionReport?: ExecutionReport;
+  retrievedAt?: string;
+  requestedCount?: number;
+  returnedCount?: number;
   page?: number;
   offset?: number;
   totalHarvested?: number;
@@ -109,3 +116,11 @@ export interface UserProfile {
   email: string | null;
   photoURL: string | null;
 }
+
+export interface MarketplaceSignal extends Provenance {
+ platform: 'shopee'|'mercado_livre';recordType: 'marketplace_product'|'marketplace_question';sourceUrl:string;name?:string;priceBRL?:number;priceIsPix?:boolean;shippingOrigin?:string;soldCount?:number;soldPeriod?:string;question?:string;questionId?:string;regionalMatch?:boolean|null;buyerIdentityAvailable:false;
+}
+
+export interface ProfessionalContact {name:string;role:string;company:string;phone:string;email:string;evidence:Record<string,FieldEvidence>;fieldStatus:Record<string,string>;buyerAuthority:string;}
+export interface ExecutionSource {source:string;status:string;consulted:boolean;received:number;qualified:number;discarded:Record<string,number>;errors:string[];limits:string[];providerCostUsd:number|null;providerCredits?:number;marketSignals?:number;normalized?:number;pages?:number;providerTotal?:number|null;runId?:string;url?:string;query?:string;balance?:string;reservedUsd?:number;cacheHit?:boolean;collectedAt?:number;expiresAt?:number;}
+export interface ExecutionReport {state:string;summary:string;generatedAt:string;sources:ExecutionSource[];reusedExecution?:boolean;manualSearchLinks?:Array<{q:string;url:string}>;}

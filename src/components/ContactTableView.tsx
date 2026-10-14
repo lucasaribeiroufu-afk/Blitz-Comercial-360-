@@ -259,7 +259,8 @@ export function ContactTableView({
       'Alerta de Intenção de Compra',
       'Link / Google Maps',
       'Observações / Notas',
-      'Data de Extração / Cadastro'
+      'Data de Extração / Cadastro',
+      'Evidências por Campo (JSON)'
     ];
 
     const escapeCsv = (str: string | undefined | null) => {
@@ -281,7 +282,7 @@ export function ContactTableView({
         ? `${new Date(c.createdAt).toLocaleDateString('pt-BR')} ${new Date(c.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
         : '';
 
-      const entityLabel = c.entityType === 'pf' ? 'Pessoa Física (PF)' : 'Pessoa Jurídica (PJ/CNPJ)';
+      const entityLabel = c.recordType === 'purchase_mention' ? 'Menção pública (autor não confirmado)' : c.entityType === 'pf' ? 'Pessoa Física (PF)' : 'Estabelecimento';
       const insta = resolveInstagram(c);
 
       return [
@@ -296,13 +297,14 @@ export function ContactTableView({
         escapeCsv(c.department || ''),
         escapeCsv(c.trendingInsights ? c.trendingInsights.join('; ') : ''),
         escapeCsv(c.competitorPrices || ''),
-        escapeCsv(c.demandTimeframe || 'Últimos 7 dias'),
+        escapeCsv(c.demandTimeframe || ''),
         escapeCsv(c.category || c.role || ''),
         escapeCsv(statusLabels[c.status] || c.status),
         escapeCsv(isUrgentBuy),
         escapeCsv(c.profileUrl || ''),
         escapeCsv(c.notes || ''),
         escapeCsv(createdDateFormatted),
+        escapeCsv(JSON.stringify(c.evidence || {})),
       ];
     });
 
