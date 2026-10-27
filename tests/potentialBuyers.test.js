@@ -16,3 +16,15 @@ test('potential mode requires explicit sectors and never invents a responsible p
  const result=await searchBusinesses({query:'iodo 10%',location:'Brasil',prospectMode:'potential',targetSectors:['fazendas leiteiras']},{mapsKey:'fixture',fetcher:async()=>({ok:true,json:async()=>({places:[place('1','Fazendas Leiteiras Fixture','Fazendas leiteiras')]})}),readPage:async url=>({url,html:'<title>Fazendas Leiteiras Fixture</title><p>Entre em contato com nossa equipe.</p>'})});
  assert.equal(result.leads[0].decisionMaker,'');assert.equal(result.leads[0].decisionMakerPhone,'');assert.equal(result.leads[0].email,'');
 });
+
+test('dairy farm trading names can be corroborated by their own site, never by an unrelated station',async()=>{
+ let reads=0;
+ const result=await searchBusinesses({query:'iodo 10%',location:'Brasil',count:4,prospectMode:'potential',targetSectors:['fazendas leiteiras']},{mapsKey:'fixture',fetcher:async()=>({ok:true,json:async()=>({places:[place('1','Fazenda Aurora','Fazenda'),place('2','Posto Aurora','Posto de combustível'),place('3','Fazenda Sem Prova','Fazenda')]})}),readPage:async url=>{reads++;return {url,html:'<title>Fazenda Aurora</title><p>Nossa atividade é a produção de leite.</p>'};}});
+ assert.equal(result.leads.length,1);assert.equal(result.leads[0].name,'Fazenda Aurora');
+ assert.match(result.leads[0].evidence.sector.excerpt,/produção de leite/);
+ assert.equal(result.meta.searchDiagnostics[0].received,3);
+ assert.equal(result.meta.searchDiagnostics[0].rejectedCategory,2);
+ assert.equal(result.meta.searchDiagnostics[0].verifiedWebsite,1);
+ assert.match(result.meta.summary,/3 estabelecimentos recebidos/);
+ assert.equal(reads,1); // repeated URL uses cache; enrichment does not read it twice
+});

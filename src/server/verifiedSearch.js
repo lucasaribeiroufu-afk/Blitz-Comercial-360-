@@ -126,11 +126,18 @@ export async function searchBusinesses(body, deps = {}) {
       || sectors.some(s => typeof s !== 'string' || !s.trim() || s.length > 100 || isBuyerSearch(s, 'pj'))) {
       throw new SearchError('Informe um ou dois segmentos de empresas para prospectar. Ex.: fazendas leiteiras. O segmento é uma hipótese comercial, não prova de compra.', 400);
     }
-    const leads = [], seen = new Set(), errors = [];
+    const leads = [], seen = new Set(), errors = [], diagnostics = [];
+    const siteBudget = {remaining:3}, pages = new Map();
+    const cachedReader = url => {
+      if (!pages.has(url)) pages.set(url, (deps.readPage || readPublicPage)(url));
+      return pages.get(url);
+    };
     for (const sector of [...new Set(sectors.map(s => s.trim()))]) {
       try {
+        const diagnostic = {sector,received:0,rejectedCategory:0,rejectedLocation:0,verifiedWebsite:0};
+        diagnostics.push(diagnostic);
         const found = await searchBusinesses({...p, query:sector, targetEntityType:'pj', prospectMode:undefined,
-          count:Math.min(20, p.count), offset:p.offset}, {...deps,maxPages:1,skipBusinessEnrichment:true});
+          count:Math.min(20, p.count), offset:p.offset}, {...deps,maxPages:1,skipBusinessEnrichment:true,qualifySector:true,siteBudget,diagnostic,readPage:cachedReader});
         for (const lead of found.leads) {
           if (seen.has(lead.profileUrl)) continue;
           seen.add(lead.profileUrl);
@@ -141,12 +148,15 @@ export async function searchBusinesses(body, deps = {}) {
       } catch (error) { errors.push(error instanceof SearchError ? error.message : 'Falha ao consultar segmento.'); }
     }
     if (!leads.length && errors.length) throw new SearchError(errors.join(' '), 503);
-    const selected = await Promise.all(leads.slice(0,p.count).map((lead,index) => index < 3 ? enrichBusinessContacts(lead,deps) : lead));
+    const selected = await Promise.all(leads.slice(0,p.count).map((lead,index) => index < 3 ? enrichBusinessContacts(lead,{...deps,readPage:cachedReader}) : lead));
     const out = result(selected,p,[...errors,'Prospecção por segmento escolhido pelo usuário. Não comprova uso, compra ou interesse no produto. Até dois segmentos e uma página de até 20 resultados por segmento e até três sites comerciais; não cobre todo o Brasil.',
       'Nomes de responsáveis só aparecem com vínculo e função publicados pela própria empresa. Contato ausente permanece vazio.']);
     out.meta.intent = 'b2b_procurement';
     out.meta.targetAudience = 'Empresas potenciais por segmento; intenção de compra não comprovada';
-    out.meta.summary = `${selected.length} empresas potenciais para ${product}. Correspondência com os segmentos solicitados; compra e uso do produto não comprovados.`;
+    out.meta.searchDiagnostics = diagnostics;
+    const received = diagnostics.reduce((sum,d) => sum+d.received,0);
+    const rejected = diagnostics.reduce((sum,d) => sum+d.rejectedCategory,0);
+    out.meta.summary = `${received} estabelecimentos recebidos do Google; ${rejected} descartados por atividade sem comprovação suficiente. ${selected.length} empresas potenciais para ${product}. Correspondência com os segmentos solicitados; compra e uso do produto não comprovados.`;
     return out;
   }
   if (isBuyerSearch(p.query, p.targetEntityType)) {const {startBuyerRadar}=await import('./buyerRadar.js');return startBuyerRadar(body,deps);}
@@ -156,14 +166,39 @@ export async function searchBusinesses(body, deps = {}) {
   let token;
   for (let page = 0; page < (deps.maxPages || 3) && leads.length < p.count + p.offset; page++) {
     const data = await json('https://places.googleapis.com/v1/places:searchText', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-Goog-Api-Key':key, 'X-Goog-FieldMask':'places.id,places.displayName,places.formattedAddress,places.addressComponents,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.websiteUri,places.googleMapsUri,places.primaryTypeDisplayName,nextPageToken' }, body:JSON.stringify({ textQuery:[p.query,p.location].filter(Boolean).join(' em '), languageCode:'pt-BR', regionCode:'BR', pageSize:20, ...(token ? {pageToken:token} : {}) }) }, deps.fetcher);
+    if (deps.diagnostic) deps.diagnostic.received += (data.places || []).length;
     for (const place of data.places || []) {
+      if (!matchesLocation(place,p.location) && deps.diagnostic) deps.diagnostic.rejectedLocation++;
       if (!place.id || !place.displayName?.text || !matchesLocation(place,p.location) || seen.has(place.id) || excluded.has(normalize(place.displayName.text))) continue;
       // Conservative textual category match. Reject ambiguity instead of substituting another niche.
       const terms = normalize(p.query).split(' ').filter(t => !['de','da','do','e','para','em'].includes(t));
       const searchable = normalize(`${place.displayName.text} ${place.primaryTypeDisplayName?.text || ''}`);
-      if (!terms.length || !terms.every(t => searchable.split(' ').some(w => w === t || w === t+'s' || t === w+'s' || (t.length >= 5 && w.slice(0,-1) === t.slice(0,-1))))) continue;
+      let categoryMatches = terms.length && terms.every(t => searchable.split(' ').some(w => w === t || w === t+'s' || t === w+'s' || (t.length >= 5 && w.slice(0,-1) === t.slice(0,-1))));
+      let sectorEvidence;
+      // A farm's legal/trade name need not describe its dairy activity.
+      // Only this explicit sector alias may use linked-site corroboration; unrelated businesses remain excluded.
+      if (!categoryMatches && deps.qualifySector && /^fazendas? leiteiras?$/.test(normalize(p.query))
+        && /\b(fazenda|fazendas|farm|farms|agropecuaria|pecuaria)\b/.test(searchable)) {
+        categoryMatches = /\b(leiteira|leiteiras|dairy)\b/.test(searchable);
+        if (!categoryMatches && place.websiteUri && deps.siteBudget.remaining > 0) {
+          deps.siteBudget.remaining--;
+          try {
+            const page = await (deps.readPage || readPublicPage)(place.websiteUri.replace(/^http:\/\//,'https://'));
+            const sameHost = new URL(page.url).hostname.replace(/^www\./,'') === new URL(place.websiteUri).hostname.replace(/^www\./,'');
+            const parsed = parsePage(page.html), company = normalize(place.displayName.text);
+            const activity = parsed.blocks.find(block => /\b(producao de leite|produzimos leite|pecuaria leiteira|atividade leiteira|fazenda leiteira)\b/.test(normalize(block)));
+            if (sameHost && company.length >= 4 && normalize(parsed.title).includes(company) && activity) {
+              categoryMatches = true;
+              sectorEvidence = evidence(p.query,page.url,'Atividade mencionada no site vinculado à empresa',new Date().toISOString(),activity);
+              if (deps.diagnostic) deps.diagnostic.verifiedWebsite++;
+            }
+          } catch { /* Unavailable site is not proof of dairy activity. */ }
+        }
+      }
+      if (!categoryMatches) {if (deps.diagnostic) deps.diagnostic.rejectedCategory++;continue;}
       seen.add(place.id);
       const lead = base(), at = new Date().toISOString(), url = place.googleMapsUri || `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(place.displayName.text)}&query_place_id=${encodeURIComponent(place.id)}`;
+      if (sectorEvidence) lead.evidence.sector = sectorEvidence;
       lead.platform = 'google_maps'; lead.entityType = 'pj'; lead.companyContactLabel = 'Contato da empresa'; lead.profileUrl = url;
       for (const [field,value] of Object.entries({ name:place.displayName.text, location:place.formattedAddress, phone:place.nationalPhoneNumber, establishmentPhone:place.nationalPhoneNumber, rating:place.rating, reviewsCount:place.userRatingCount, website:place.websiteUri, category:place.primaryTypeDisplayName?.text })) set(lead,field,value,url,'Google Places',at);
       leads.push(lead);
