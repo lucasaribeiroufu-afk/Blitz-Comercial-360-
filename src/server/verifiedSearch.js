@@ -118,12 +118,43 @@ export function matchesLocation(place, location) {
 export async function searchBusinesses(body, deps = {}) {
   const p = input(body);
   if (/^[\d.\/-]+$/.test(p.query)) { const lead = await cnpjLookup(p.query, deps); return result(!p.location || matchesLocation({addressComponents:lead.addressComponents},p.location) ? [lead] : [], p); }
+  if (p.prospectMode === 'potential') {
+    const {productQuery} = await import('./purchaseIntent.js');
+    const product = productQuery(p.query);
+    const sectors = p.targetSectors;
+    if (!Array.isArray(sectors) || !sectors.length || sectors.length > 2
+      || sectors.some(s => typeof s !== 'string' || !s.trim() || s.length > 100 || isBuyerSearch(s, 'pj'))) {
+      throw new SearchError('Informe um ou dois segmentos de empresas para prospectar. Ex.: fazendas leiteiras. O segmento é uma hipótese comercial, não prova de compra.', 400);
+    }
+    const leads = [], seen = new Set(), errors = [];
+    for (const sector of [...new Set(sectors.map(s => s.trim()))]) {
+      try {
+        const found = await searchBusinesses({...p, query:sector, targetEntityType:'pj', prospectMode:undefined,
+          count:Math.min(20, p.count), offset:p.offset}, {...deps,maxPages:1,skipBusinessEnrichment:true});
+        for (const lead of found.leads) {
+          if (seen.has(lead.profileUrl)) continue;
+          seen.add(lead.profileUrl);
+          leads.push({...lead, recordType:'potential_company', matchedProduct:product, prospectSector:sector,
+            prospectingBasis:`Empresa encontrada no segmento solicitado: ${sector}. Uso ou compra de ${product} não comprovados.`,
+            intent:'Possível cliente — demanda pelo produto não comprovada'});
+        }
+      } catch (error) { errors.push(error instanceof SearchError ? error.message : 'Falha ao consultar segmento.'); }
+    }
+    if (!leads.length && errors.length) throw new SearchError(errors.join(' '), 503);
+    const selected = await Promise.all(leads.slice(0,p.count).map((lead,index) => index < 3 ? enrichBusinessContacts(lead,deps) : lead));
+    const out = result(selected,p,[...errors,'Prospecção por segmento escolhido pelo usuário. Não comprova uso, compra ou interesse no produto. Até dois segmentos e uma página de até 20 resultados por segmento e até três sites comerciais; não cobre todo o Brasil.',
+      'Nomes de responsáveis só aparecem com vínculo e função publicados pela própria empresa. Contato ausente permanece vazio.']);
+    out.meta.intent = 'b2b_procurement';
+    out.meta.targetAudience = 'Empresas potenciais por segmento; intenção de compra não comprovada';
+    out.meta.summary = `${selected.length} empresas potenciais para ${product}. Correspondência com os segmentos solicitados; compra e uso do produto não comprovados.`;
+    return out;
+  }
   if (isBuyerSearch(p.query, p.targetEntityType)) {const {startBuyerRadar}=await import('./buyerRadar.js');return startBuyerRadar(body,deps);}
   const key = deps.mapsKey ?? (process.env.GOOGLE_MAPS_API_KEY || process.env.CHAVE_API_DO_GOOGLE_MAPS);
   if (!key) throw new SearchError('Configure GOOGLE_MAPS_API_KEY no servidor e habilite Places API (New).', 503);
   const leads = [], seen = new Set(), excluded = new Set((p.excludeNames || []).map(normalize));
   let token;
-  for (let page = 0; page < 3 && leads.length < p.count + p.offset; page++) {
+  for (let page = 0; page < (deps.maxPages || 3) && leads.length < p.count + p.offset; page++) {
     const data = await json('https://places.googleapis.com/v1/places:searchText', { method:'POST', headers:{ 'Content-Type':'application/json', 'X-Goog-Api-Key':key, 'X-Goog-FieldMask':'places.id,places.displayName,places.formattedAddress,places.addressComponents,places.nationalPhoneNumber,places.rating,places.userRatingCount,places.websiteUri,places.googleMapsUri,places.primaryTypeDisplayName,nextPageToken' }, body:JSON.stringify({ textQuery:[p.query,p.location].filter(Boolean).join(' em '), languageCode:'pt-BR', regionCode:'BR', pageSize:20, ...(token ? {pageToken:token} : {}) }) }, deps.fetcher);
     for (const place of data.places || []) {
       if (!place.id || !place.displayName?.text || !matchesLocation(place,p.location) || seen.has(place.id) || excluded.has(normalize(place.displayName.text))) continue;
@@ -140,7 +171,7 @@ export async function searchBusinesses(body, deps = {}) {
     token = data.nextPageToken; if (!token) break;
   }
   const selected=leads.slice(p.offset,p.offset+p.count);
-  const enriched=await Promise.all(selected.map((lead,index)=>index<3 ? enrichBusinessContacts(lead,deps) : lead));
+  const enriched=await Promise.all(selected.map((lead,index)=>!deps.skipBusinessEnrichment && index<3 ? enrichBusinessContacts(lead,deps) : lead));
   return result(enriched,p,['Até três sites comerciais vinculados foram considerados para coletar links públicos de telefone e email. Ausência de contato não é corrigida por inferência.','Correspondência conservadora de categoria pode omitir empresas relevantes. Google Places não informa intenção de compra, CNPJ ou responsável por compras.']);
 }
 export async function extractWebsite(body, deps = {}) {

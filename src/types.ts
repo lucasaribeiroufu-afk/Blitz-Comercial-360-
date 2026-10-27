@@ -5,7 +5,7 @@ export type EntityType = 'pj' | 'pf' | 'both';
 export type PlatformType = 'google_maps' | 'google_business' | 'google_search' | 'linkedin' | 'instagram' | 'website' | 'facebook' | 'tiktok' | 'other';
 
 export interface FieldEvidence {value: unknown; sourceUrl: string; source: string; retrievedAt: string; excerpt: string;}
-export interface Provenance {professionalContacts?:ProfessionalContact[];corporateOfficers?:Array<{nome:string;qualificacao:string}>;companyContactLabel?:string;authorDeclaredLocation?:string;publicationLocation?:string;groupContext?:string;evidence?: Record<string, FieldEvidence>; verificationStatus?: 'source_observed'; recordType?: 'purchase_mention'|'marketplace_product'|'marketplace_question'; intent?: string; authorProfileUrl?: string; publishedAt?: string; geographicStatus?: string; matchedProduct?: string;}
+export interface Provenance {professionalContacts?:ProfessionalContact[];corporateOfficers?:Array<{nome:string;qualificacao:string}>;companyContactLabel?:string;authorDeclaredLocation?:string;publicationLocation?:string;groupContext?:string;evidence?: Record<string, FieldEvidence>; verificationStatus?: 'source_observed'; recordType?: 'purchase_mention'|'marketplace_product'|'marketplace_question'|'potential_company'; prospectSector?:string; prospectingBasis?:string; intent?: string; authorProfileUrl?: string; publishedAt?: string; geographicStatus?: string; matchedProduct?: string;}
 export interface Contact extends Provenance {
   id?: string;
   name: string;

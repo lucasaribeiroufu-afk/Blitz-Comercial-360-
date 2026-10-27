@@ -5,6 +5,7 @@ export function SourceEvidence({record}: {record: Provenance}) {
  return <details className="text-xs text-zinc-400 mt-2 rounded border border-zinc-800 p-2">
   <summary className="cursor-pointer">Fontes e evidências ({fields.length} campos)</summary>
   {record.authorProfileUrl && /^https:\/\/(www\.)?(instagram|facebook|tiktok)\.com\//.test(record.authorProfileUrl) ? <p className="mt-2"><a href={record.authorProfileUrl} target="_blank" rel="noreferrer" className="text-sky-400 underline">Abrir perfil público do autor</a></p> : null}
+  {record.recordType === 'potential_company' && <p className="mt-2 text-amber-300">Possível comprador — demanda não comprovada. {record.prospectingBasis}</p>}
   <p className="mt-2">Fonte observada; telefone ativo e compra atual não comprovados.</p>
   {record.companyContactLabel&&<p className="mt-2">{record.companyContactLabel}: telefone geral não atribuído a comprador.</p>}
   {!!record.corporateOfficers?.length&&<p className="mt-2">Sócios/administradores (QSA, não comprova função de compras): {record.corporateOfficers.map(p=>`${p.nome} (${p.qualificacao})`).join('; ')}</p>}

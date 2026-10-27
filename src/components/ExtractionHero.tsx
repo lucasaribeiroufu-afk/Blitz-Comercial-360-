@@ -117,9 +117,11 @@ export function ExtractionHero({
   const [activeTab, setActiveTab] = useState<'search' | 'url'>('search');
   
   // Search state - 3 Integrated & Synchronized Consultation Pillars
-  const [searchTerm, setSearchTerm] = useState('tinta impermeabilizante');
-  const [locationTerm, setLocationTerm] = useState('Uberlândia, MG');
-  const [searchObjective, setSearchObjective] = useState('publicações com intenção de comprar tinta impermeabilizante e região declarada em Uberlândia, MG');
+  const [searchTerm, setSearchTerm] = useState('iodo 10%');
+  const [prospectMode,setProspectMode] = useState<'evidence'|'potential'>('potential');
+  const [targetSectors,setTargetSectors] = useState('fazendas leiteiras');
+  const [locationTerm, setLocationTerm] = useState('Brasil');
+  const [searchObjective, setSearchObjective] = useState('Possíveis compradores de iodo 10% no Brasil; hipótese por segmento, com contatos comerciais publicados');
   const [isObjectiveCustom, setIsObjectiveCustom] = useState(false);
   const [includeMarketplaces,setIncludeMarketplaces]=useState(true);
   const searchLock=useRef(false);
@@ -131,7 +133,7 @@ export function ExtractionHero({
   const [socialSourceLinks,setSocialSourceLinks] = useState('');
   const socialSourceUrls = socialSourceLinks.split(/\s+/).filter(Boolean);
   const [leadCount, setLeadCount] = useState<number>(4);
-  const [targetEntityType, setTargetEntityType] = useState<EntityType>('pf');
+  const [targetEntityType, setTargetEntityType] = useState<EntityType>('pj');
   const [currentPage, setCurrentPage] = useState<number>(1);
   const [harvestedNames, setHarvestedNames] = useState<string[]>([]);
 
@@ -328,7 +330,7 @@ export function ExtractionHero({
 
       // 🔀 ROTEAMENTO: B2C (Radar de Intenção de Compra) vs B2B (Empresas & Decisores)
       let response;
-      if (isBuyerSearch(searchTerm, targetEntityType)) {
+      if (prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType)) {
         setLoadingStatus(`🎯 Rastreando menções públicas de pessoas buscando comprar "${effectiveTerm}"...`);
         await new Promise((r) => setTimeout(r, 150));
         response = await searchB2CLeads(effectiveTerm, buyerLocation(effectiveLoc), leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
@@ -345,7 +347,7 @@ export function ExtractionHero({
           [],
           targetEntityType,
           'cluster',
-          freshSeed
+          freshSeed, prospectMode, targetSectors.split(',').map(s=>s.trim()).filter(Boolean)
         );
       }
 
@@ -363,7 +365,7 @@ export function ExtractionHero({
         const contactsToSave = response.leads.map((r) => {
           const noteParts = [
             searchObjective ? `Objetivo: ${searchObjective}` : '',
-            r.recordType === 'purchase_mention' ? 'Menção em página pública; autor não confirmado' : 'Estabelecimento listado; responsável por compras não confirmado',
+            r.recordType === 'potential_company' ? r.prospectingBasis : r.recordType === 'purchase_mention' ? 'Menção em página pública; autor não confirmado' : 'Estabelecimento listado; responsável por compras não confirmado',
             r.trendingInsights && r.trendingInsights.length > 0 ? `Itens procurados: ${r.trendingInsights.join(', ')}` : '',
             `Extraído via Blitz 360 AI Engine (${effectiveTerm} - ${r.location})`
           ].filter(Boolean);
@@ -377,6 +379,7 @@ export function ExtractionHero({
             authorDeclaredLocation:r.authorDeclaredLocation||'',publicationLocation:r.publicationLocation||'',groupContext:r.groupContext||'',
             verificationStatus: r.verificationStatus,
             recordType: r.recordType,
+            prospectSector:r.prospectSector || '', prospectingBasis:r.prospectingBasis || '',
             intent: r.intent,
             authorProfileUrl: r.authorProfileUrl || '',
             publishedAt: r.publishedAt || '',
@@ -440,7 +443,7 @@ export function ExtractionHero({
     try {
       // Para B2C, prioriza fontes pendentes explicitamente retornadas pelo worker.
       let response;
-      if (isBuyerSearch(searchTerm, targetEntityType)) {
+      if (prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType)) {
         response = await searchB2CLeads(effectiveTerm, buyerLocation(locationTerm), leadCount, pendingSocialSources.length ? pendingSocialSources.map(s=>s.url) : socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
       } else {
         response = await searchGoogleLeads(
@@ -454,7 +457,7 @@ export function ExtractionHero({
           harvestedNames,
           targetEntityType,
           'cluster',
-          Date.now()
+          Date.now(), prospectMode, targetSectors.split(',').map(s=>s.trim()).filter(Boolean)
         );
       }
 
@@ -473,7 +476,7 @@ export function ExtractionHero({
           const contactsToSave = response.leads.map((r) => {
             const noteParts = [
               searchObjective ? `Objetivo: ${searchObjective}` : '',
-              r.recordType === 'purchase_mention' ? 'Menção em página pública; autor não confirmado' : 'Estabelecimento listado; responsável por compras não confirmado',
+              r.recordType === 'potential_company' ? r.prospectingBasis : r.recordType === 'purchase_mention' ? 'Menção em página pública; autor não confirmado' : 'Estabelecimento listado; responsável por compras não confirmado',
               r.trendingInsights && r.trendingInsights.length > 0 ? `Itens procurados: ${r.trendingInsights.join(', ')}` : '',
               `Safra #${nextPage} Blitz 360 (${effectiveTerm} - ${r.location})`
             ].filter(Boolean);
@@ -487,6 +490,7 @@ export function ExtractionHero({
             authorDeclaredLocation:r.authorDeclaredLocation||'',publicationLocation:r.publicationLocation||'',groupContext:r.groupContext||'',
             verificationStatus: r.verificationStatus,
             recordType: r.recordType,
+            prospectSector:r.prospectSector || '', prospectingBasis:r.prospectingBasis || '',
             intent: r.intent,
             authorProfileUrl: r.authorProfileUrl || '',
             publishedAt: r.publishedAt || '',
@@ -812,6 +816,19 @@ export function ExtractionHero({
           <form onSubmit={handleSearchGoogle} className="space-y-4">
             <div className="rounded-2xl border border-zinc-700/80 bg-zinc-950/90 p-4 sm:p-5 shadow-2xl ring-1 ring-white/5 space-y-4">
               
+              <div className="space-y-2">
+                <label className="block text-xs text-zinc-300" htmlFor="prospecting-mode">Objetivo da pesquisa</label>
+                <select id="prospecting-mode" value={prospectMode} onChange={e=>{setProspectMode(e.target.value as 'evidence'|'potential');handleClearResults();}} className="w-full rounded-lg bg-zinc-900 border border-zinc-700 p-2 text-sm text-white">
+                  <option value="potential">Possíveis compradores — empresas por segmento</option>
+                  <option value="evidence">Intenção de compra publicada / busca de estabelecimentos</option>
+                </select>
+                {prospectMode === 'potential' && <>
+                  <label htmlFor="prospect-sectors" className="block text-xs text-zinc-300">Segmentos que deseja prospectar (até dois, separados por vírgula)</label>
+                  <input id="prospect-sectors" value={targetSectors} onChange={e=>setTargetSectors(e.target.value)} className="w-full rounded-lg bg-zinc-900 border border-zinc-700 p-2 text-sm text-white" placeholder="Ex.: fazendas leiteiras" />
+                  <p className="text-xs text-amber-300">Segmento escolhido é hipótese comercial. O resultado não comprova uso ou compra do produto. Nomes e contatos ausentes não serão inventados.</p>
+                  <button type="button" className="text-xs text-indigo-300 underline" onClick={()=>{handleClearSearch();setProspectMode('potential');setSearchTerm('iodo 10%');setLocationTerm('Brasil');setTargetEntityType('pj');setTargetSectors('fazendas leiteiras');setSearchObjective('Possíveis compradores de iodo 10% no Brasil; contatos comerciais, responsáveis publicados e localização no Maps');}}>Preparar pesquisa: iodo 10% · Brasil · fazendas leiteiras</button>
+                </>}
+              </div>
               {/* Top Filter Row: Entity Type + Quick Clear */}
               <div className="flex flex-wrap items-center justify-between gap-2 pb-2 border-b border-zinc-800/80">
                 <div className="flex items-center gap-2">
@@ -1075,7 +1092,7 @@ export function ExtractionHero({
 
             </div>
 
-            {isBuyerSearch(searchTerm, targetEntityType) && <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+            {prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType) && <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
               <label htmlFor="social-source-links" className="text-xs text-zinc-300">Origens públicas opcionais: grupos, posts/reels, vídeos e anúncios de marketplaces</label>
               <textarea id="social-source-links" value={socialSourceLinks} onChange={e=>setSocialSourceLinks(e.target.value)} disabled={isLoading || isLoadingMore} rows={2} placeholder="Cole links públicos, separados por espaço. Em branco: descoberta por produto e região." className="mt-2 w-full rounded bg-zinc-950 p-2 text-xs text-zinc-200" />
               <label className="mt-2 flex gap-2 text-xs text-zinc-300"><input type="checkbox" checked={includeMarketplaces} onChange={e=>setIncludeMarketplaces(e.target.checked)} disabled={isLoading || isLoadingMore}/>Analisar também produtos da Shopee e perguntas públicas do Mercado Livre</label>
@@ -1278,7 +1295,7 @@ export function ExtractionHero({
                 </div>
                 {(searchTerm || locationTerm) && (
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Filtro: <strong className="text-zinc-200">{searchTerm || 'Geral'}</strong> {locationTerm ? <>em <strong className="text-emerald-300">{locationTerm}</strong></> : ''} • {isBuyerSearch(searchTerm, targetEntityType) ? <span className="text-purple-300 font-medium">Radar de intenção de compra</span> : <span className="text-amber-300 font-medium">Gerente de Compras & Suprimentos</span>}
+                    Filtro: <strong className="text-zinc-200">{searchTerm || 'Geral'}</strong> {locationTerm ? <>em <strong className="text-emerald-300">{locationTerm}</strong></> : ''} • {prospectMode === 'potential' ? <span className="text-amber-300">Empresas potenciais — demanda não comprovada</span> : isBuyerSearch(searchTerm, targetEntityType) ? <span className="text-purple-300 font-medium">Radar de intenção de compra</span> : <span className="text-amber-300 font-medium">Gerente de Compras & Suprimentos</span>}
                   </p>
                 )}
               </div>
@@ -1347,7 +1364,7 @@ export function ExtractionHero({
                 const cleanDecisionPhoneNum = cleanPhone(decisionMakerPhone || lead.phone);
                 const cleanPhoneNum = cleanDecisionPhoneNum || cleanMainPhone;
                 const insta = resolveInstagram(lead);
-                const isB2CMode = targetEntityType === 'pf';
+                const isB2CMode = lead.recordType === 'purchase_mention';
 
                 return (
                   <div
@@ -1355,6 +1372,9 @@ export function ExtractionHero({
                     className="relative rounded-xl border border-zinc-800 bg-zinc-950/90 p-4 sm:p-5 shadow-xl hover:border-zinc-700 transition flex flex-col justify-between"
                   >
                     <div>
+                      {lead.recordType === 'potential_company' && <div className="mb-3 rounded-lg border border-amber-700/50 bg-amber-950/30 p-2 text-xs text-amber-200">
+                        <strong>Possível comprador — demanda não comprovada</strong><p>{lead.prospectingBasis}</p>
+                      </div>}
                       {/* Header */}
                       <div className="flex items-start justify-between gap-2">
                         <div className="min-w-0 flex-1">

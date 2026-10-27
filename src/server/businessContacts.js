@@ -117,6 +117,18 @@ export async function enrichBusinessContacts(lead, deps = {}) {
       next.establishmentPhone = next.phone;
       next.evidence.establishmentPhone = next.evidence.phone;
     }
+    const buyers = next.professionalContacts.filter(p => /compr|supriment|procurement|purchas/i.test(p.role));
+    if (buyers.length === 1) {
+      const person = buyers[0];
+      next.decisionMaker = person.name;
+      next.department = person.role;
+      next.evidence.decisionMaker = person.evidence.name;
+      next.evidence.department = person.evidence.role;
+      if (person.phone) {
+        next.decisionMakerPhone = person.phone;
+        next.evidence.decisionMakerPhone = person.evidence.phone;
+      }
+    }
     next.phoneStructure = structuralPhone(next.phone);
     return next;
   } catch {

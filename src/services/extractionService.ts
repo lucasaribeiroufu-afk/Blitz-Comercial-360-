@@ -10,9 +10,9 @@ async function request(route: string, body: object): Promise<any> {
  const response = await fetch(route,{method:'POST',headers:await apiHeaders(),body:JSON.stringify(body),signal:AbortSignal.timeout(55000)});
  return readApiResponse(response, route);
 }
-export async function searchGoogleLeads(term: string, location: string, count=6, config?: ExtractionApiConfig, objective?: string, page=1, offset=0, excludeNames: string[]=[], targetEntityType:'both'|'pf'|'pj'='both', expansionMode:'cluster'|'strict'='strict', searchSeed: number|string=Date.now()): Promise<DeepSearchResult> {
+export async function searchGoogleLeads(term: string, location: string, count=6, config?: ExtractionApiConfig, objective?: string, page=1, offset=0, excludeNames: string[]=[], targetEntityType:'both'|'pf'|'pj'='both', expansionMode:'cluster'|'strict'='strict', searchSeed: number|string=Date.now(), prospectMode:'evidence'|'potential'='evidence', targetSectors:string[]=[]): Promise<DeepSearchResult> {
  if(config?.useCustomApi) throw new Error('API personalizada desativada: os dados externos ainda não possuem validação de proveniência. Use as fontes configuradas no servidor.');
- return request('/api/deep-search',{query:term,location,count,objective,page,offset,excludeNames,targetEntityType,expansionMode:'strict',searchSeed});
+ return request('/api/deep-search',{query:term,location,count,objective,page,offset,excludeNames,targetEntityType,expansionMode:'strict',searchSeed,prospectMode,targetSectors});
 }
 export async function extractFromDirectUrl(rawUrl: string, config?: ExtractionApiConfig): Promise<ExtractedResult> {
  if(config?.useCustomApi) throw new Error('Use a coleta de fontes no servidor.');

@@ -103,3 +103,11 @@ Pedidos explícitos como `compra de iodo 10%` e `compradores de iodo 10%` seguem
 Campo de região vazio, `Brasil`, `Brasil todo` ou `todo o Brasil` usa escopo nacional, sem cidade padrão. Isso amplia o escopo consultado, não comprova residência nem cobertura de todo o país: autores sem evidência regional permanecem na seção de região não comprovada. Um anúncio de venda de iodo não se torna comprador. A concentração percentual pedida precisa aparecer na evidência; 1%, 10% e 10,5% não são intercambiáveis.
 
 O roteamento não configura nem implanta o worker e não garante acesso às redes. Sem fonte acessível ou orçamento persistente configurado, o relatório informa o bloqueio e não retorna empresas de uma lista interna. Os testes de regressão deste fluxo usam fontes simuladas, sem coleta de compradores reais.
+
+## Possíveis compradores por segmento
+
+O seletor de objetivo permite pesquisar empresas potenciais sem confundi-las com intenção publicada. O produto permanece em `matchedProduct`; um ou dois segmentos informados pelo usuário alimentam a busca de estabelecimentos no Places. Exemplo preparado: `iodo 10%`, `Brasil`, segmento `fazendas leiteiras`. Esse segmento é hipótese comercial, não comprovação de uso do produto ou da concentração.
+
+A consulta lê até uma página de 20 estabelecimentos por segmento e considera até três sites comerciais vinculados no total para enriquecimento. Não cobre todo o Brasil nem todos os compradores. Resultados de categorias sem correspondência com o segmento não substituem a consulta. Sem fonte, telefone/email/responsável ficam vazios. Um único profissional com função publicada de compras/suprimentos pode preencher o card, preservando a evidência e sem alegar autoridade confirmada. Outros profissionais permanecem na seção de fontes.
+
+Cards e registros persistidos mantêm o aviso `Possível comprador — demanda não comprovada`. O modo não utiliza o worker social nem Apify/Serper, mas pode consumir a API Google Places conforme a conta configurada. Menções sociais com intenção explícita continuam no modo separado e sujeitas à infraestrutura/configuração já documentada.

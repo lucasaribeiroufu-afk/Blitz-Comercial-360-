@@ -40,6 +40,7 @@ export function subscribeContacts(
           groupContext: data.groupContext || '',
           verificationStatus: data.verificationStatus,
           recordType: data.recordType,
+          prospectSector:data.prospectSector || '', prospectingBasis:data.prospectingBasis || '',
           intent: data.intent,
           authorProfileUrl: data.authorProfileUrl || '',
           publishedAt: data.publishedAt || '',
