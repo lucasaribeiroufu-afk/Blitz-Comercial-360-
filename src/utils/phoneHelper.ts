@@ -1,4 +1,5 @@
-import { REAL_VERIFIED_DATABASE } from './realVerifiedDatabase';
+import {apiHeaders} from '../services/apiAuth';
+import { validateBrazilianPhone } from './contactVeracityAuditor';
 import type { Contact } from '../types';
 
 /**
@@ -206,125 +207,16 @@ export function buildDeepSearchLinks(name: string, company?: string, location?: 
  * Uses authentic verified business numbers (mobile or commercial landline registered on WhatsApp Business).
  */
 export function resolveWhatsAppNumber(contact: Partial<Contact>): ResolvedWhatsApp {
-  const companyOrName = (contact.company || contact.name || '').trim();
-  const ddd = extractDDD(contact.phone || contact.establishmentPhone || contact.decisionMakerPhone, contact.location);
-  const role = contact.decisionMaker || 'Gerente de Compras & Suprimentos';
-  const searchUrl = `https://www.google.com/search?q=${encodeURIComponent(`${companyOrName} ${contact.location || ''} telefone whatsapp compras`)}`;
-  const deepSearchLinks = buildDeepSearchLinks(contact.name || '', contact.company, contact.location, contact.cnpj);
-
-  const defaultSourcesChecked = [
-    'Redes Sociais (Instagram, LinkedIn, Facebook)',
-    'Sites Oficiais & Portais Institucionais',
-    'Registros em Cartório & Contrato Social (Juntas Comerciais / QSA Receita Federal)',
-    'Publicações em Diários Oficiais (DOU / DOE / DOM)',
-    'Publicações de Licitações (PNCP / Comprasnet)',
-    'Páginas de Vagas e Oportunidades (Catho / Vagas.com / Gupy)',
-    'Notas Fiscais Emitidas & Sintegra / Sefaz',
-  ];
-
-  // 1. Check if matches verified business in REAL_VERIFIED_DATABASE
-  const lowerName = companyOrName.toLowerCase();
-  const verifiedMatch = REAL_VERIFIED_DATABASE.find(b => {
-    const bName = b.name.toLowerCase();
-    const bComp = b.company.toLowerCase();
-    return (
-      (lowerName.length > 3 && (bName.includes(lowerName) || lowerName.includes(bName))) ||
-      (lowerName.length > 3 && (bComp.includes(lowerName) || lowerName.includes(bComp)))
-    );
-  });
-
-  if (verifiedMatch) {
-    const primaryNumber = verifiedMatch.decisionMakerPhone || verifiedMatch.whatsapp || verifiedMatch.phone || verifiedMatch.establishmentPhone;
-    if (primaryNumber) {
-      const isMob = isMobile(primaryNumber);
-      const digits = extractDigits(primaryNumber).replace(/^55/, '');
-      const clean = `55${digits}`;
-      const est = verifiedMatch.establishmentPhone || verifiedMatch.phone || primaryNumber;
-
-      return {
-        displayPhone: formatBrazilianPhone(primaryNumber, verifiedMatch.ddd || ddd),
-        cleanPhone: clean,
-        isMobile: isMob,
-        establishmentPhone: formatBrazilianPhone(est, verifiedMatch.ddd || ddd),
-        decisionMakerRole: verifiedMatch.decisionMaker || role,
-        isVerifiedReal: true,
-        callUrl: `tel:+${clean}`,
-        searchUrl,
-        legalSource: verifiedMatch.legalSource || 'Contrato Social Registrado em Cartório / JUCEMG & Receita Federal QSA',
-        sourcesChecked: defaultSourcesChecked,
-        sourcesFound: ['Contrato Social Registrado', 'Receita Federal QSA', 'Diário Oficial', 'Redes Sociais Oficiais'],
-        deepSearchLinks,
-      };
-    }
-  }
-
-  // 2. Prioritize decisionMakerPhone if explicitly provided
-  if (contact.decisionMakerPhone && extractDigits(contact.decisionMakerPhone).length >= 8) {
-    const digits = extractDigits(contact.decisionMakerPhone).replace(/^55/, '');
-    const clean = `55${digits}`;
-    const isMob = isMobile(contact.decisionMakerPhone);
-    const est = contact.establishmentPhone || contact.phone || contact.decisionMakerPhone;
-
-    return {
-      displayPhone: formatBrazilianPhone(contact.decisionMakerPhone, ddd),
-      cleanPhone: clean,
-      isMobile: isMob,
-      establishmentPhone: formatBrazilianPhone(est, ddd),
-      decisionMakerRole: role,
-      isVerifiedReal: Boolean(contact.confidence && contact.confidence >= 90),
-      callUrl: `tel:+${clean}`,
-      searchUrl,
-      legalSource: contact.legalSource || 'Consulta Cadastral / Registro Comercial',
-      sourcesChecked: defaultSourcesChecked,
-      sourcesFound: ['Registro Cadastral do Contato'],
-      deepSearchLinks,
-    };
-  }
-
-  // 3. Check whatsapp field if provided
-  if (contact.whatsapp && extractDigits(contact.whatsapp).length >= 8) {
-    const digits = extractDigits(contact.whatsapp).replace(/^55/, '');
-    const clean = `55${digits}`;
-    const isMob = isMobile(contact.whatsapp);
-    const est = contact.establishmentPhone || contact.phone || contact.whatsapp;
-
-    return {
-      displayPhone: formatBrazilianPhone(contact.whatsapp, ddd),
-      cleanPhone: clean,
-      isMobile: isMob,
-      establishmentPhone: formatBrazilianPhone(est, ddd),
-      decisionMakerRole: role,
-      isVerifiedReal: Boolean(contact.confidence && contact.confidence >= 90),
-      callUrl: `tel:+${clean}`,
-      searchUrl,
-      legalSource: contact.legalSource || 'Canal WhatsApp Comercial Registrado',
-      sourcesChecked: defaultSourcesChecked,
-      sourcesFound: ['Canal Direto de Atendimento'],
-      deepSearchLinks,
-    };
-  }
-
-  // 4. Use primary contact.phone or establishmentPhone
-  const rawTarget = contact.phone || contact.establishmentPhone || `+55 (${ddd}) 3200-0000`;
-  const digits = extractDigits(rawTarget).replace(/^55/, '');
-  const clean = `55${digits}`;
-  const isMob = isMobile(rawTarget);
-  const est = contact.establishmentPhone || contact.phone || rawTarget;
-
-  return {
-    displayPhone: formatBrazilianPhone(rawTarget, ddd),
-    cleanPhone: clean,
-    isMobile: isMob,
-    establishmentPhone: formatBrazilianPhone(est, ddd),
-    decisionMakerRole: role,
-    isVerifiedReal: Boolean(contact.confidence && contact.confidence >= 90),
-    callUrl: `tel:+${clean}`,
-    searchUrl,
-    legalSource: contact.legalSource || 'Cadastro Comercial / Diário Oficial',
-    sourcesChecked: defaultSourcesChecked,
-    sourcesFound: ['Consulta Cadastral Aberta'],
-    deepSearchLinks,
-  };
+ const raw = contact.decisionMakerPhone || contact.whatsapp || contact.phone || contact.establishmentPhone || '';
+ const valid = validateBrazilianPhone(raw);
+ const clean = valid.isValid ? `55${valid.cleanDigits}` : '';
+ const records = Object.values(contact.evidence || {});
+ return {displayPhone:valid.isValid ? raw : '',cleanPhone:clean,isMobile:isMobile(raw),
+  establishmentPhone:contact.establishmentPhone || '',decisionMakerRole:contact.decisionMaker || 'Responsável não identificado',
+  isVerifiedReal:false,callUrl:clean ? `tel:+${clean}` : '',
+  searchUrl:`https://www.google.com/search?q=${encodeURIComponent(`${contact.company || contact.name || ''} telefone`)}`,
+  legalSource:contact.legalSource || '',sourcesChecked:[...new Set(records.map(r => r.source))],sourcesFound:[...new Set(records.map(r => r.sourceUrl))],
+  deepSearchLinks:buildDeepSearchLinks(contact.name || '',contact.company,contact.location,contact.cnpj)};
 }
 
 /**
@@ -335,7 +227,7 @@ export async function consultMultiSourcePhone(contact: Partial<Contact>, customA
   try {
     const res = await fetch('/api/contacts/resolve-phone', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: await apiHeaders(),
       body: JSON.stringify({
         name: contact.name,
         company: contact.company,
@@ -349,14 +241,14 @@ export async function consultMultiSourcePhone(contact: Partial<Contact>, customA
     });
 
     if (!res.ok) {
-      throw new Error(`Falha HTTP ${res.status}`);
+      const error = await res.json().catch(() => ({}));
+      throw new Error(error.error || `Falha HTTP ${res.status}`);
     }
 
     const data = await res.json();
     return data;
   } catch (err: any) {
-    // Silenciosamente seguir sem travar a interface
-    return null;
+    throw err;
   }
 }
 

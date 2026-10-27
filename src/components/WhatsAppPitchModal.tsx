@@ -120,13 +120,13 @@ export function WhatsAppPitchModal({
 
   const activeCleanPhone = activeDisplayPhone.replace(/\D/g, '');
 
-  const activeLegalSource = verifiedLegalSource || contact.legalSource || resolvedPhone.legalSource || 'Cadastro Comercial / Diário Oficial';
+  const activeLegalSource = verifiedLegalSource || contact.legalSource || resolvedPhone.legalSource || 'Fonte não registrada';
 
   const handleInvestigatePhone = async () => {
     setIsInvestigatingPhone(true);
     setInvestigationError(null);
     setInvestigationSuccess(false);
-    setInvestigationStep('Cruzando Cartórios, Diários Oficiais, Licitações e Redes Sociais...');
+    setInvestigationStep('Consultando cadastro pelo CNPJ informado...');
 
     try {
       const result = await consultMultiSourcePhone(contact);
@@ -147,13 +147,14 @@ export function WhatsAppPitchModal({
             ...contact,
             phone: result.phone,
             establishmentPhone: result.establishmentPhone || result.phone,
-            whatsapp: result.whatsapp || result.phone,
-            decisionMakerPhone: result.decisionMakerPhone || result.phone,
+            whatsapp: '',
+            decisionMakerPhone: '',
+            evidence: result.evidence || {},
             legalSource: result.source || contact.legalSource,
           });
         }
       } else {
-        setInvestigationError('Consulta realizada. Nenhuma linha pública alternativa localizada. Utilize as 7 consultas diretas abaixo ou digite o número.');
+        setInvestigationError('Nenhum telefone cadastral publicado. Consulte os atalhos de busca ou informe um número manualmente.');
       }
     } catch (err: any) {
       setInvestigationError('Erro na consulta: ' + (err.message || 'Falha de conexão'));
@@ -172,9 +173,10 @@ export function WhatsAppPitchModal({
       onContactUpdated({
         ...contact,
         phone: clean,
-        whatsapp: clean,
-        decisionMakerPhone: clean,
-        legalSource: 'Telefone ajustado e confirmado pelo operador',
+        whatsapp: '',
+        decisionMakerPhone: '',
+        evidence: {},
+        legalSource: 'Telefone informado manualmente; não verificado',
       });
     }
   };
@@ -525,19 +527,19 @@ export function WhatsAppPitchModal({
             <div className="flex items-center gap-2 flex-wrap">
               <span className="flex items-center gap-1.5 font-bold text-zinc-300">
                 <ShieldCheck className="h-4 w-4 text-emerald-400" />
-                <span>Auditoria Multi-Fontes de Contato Real:</span>
+                <span>Consulta de telefone cadastral:</span>
               </span>
 
               {/* Status Badge */}
               {resolvedPhone.isVerifiedReal || verifiedPhoneOverride ? (
                 <span className="inline-flex items-center gap-1 rounded-full bg-emerald-950/80 border border-emerald-500/40 px-2.5 py-0.5 text-[11px] font-semibold text-emerald-300">
                   <CheckCircle2 className="h-3 w-3 text-emerald-400" />
-                  <span>Validado em Base Pública Oficial</span>
+                  <span>Telefone cadastral; atividade não testada</span>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1 rounded-full bg-amber-950/80 border border-amber-500/40 px-2.5 py-0.5 text-[11px] font-semibold text-amber-300">
                   <AlertTriangle className="h-3 w-3 text-amber-400" />
-                  <span>Linha Provisória • 7 Fontes Públicas Disponíveis</span>
+                  <span>Telefone não testado; titularidade não confirmada</span>
                 </span>
               )}
 
@@ -554,17 +556,17 @@ export function WhatsAppPitchModal({
                 onClick={handleInvestigatePhone}
                 disabled={isInvestigatingPhone}
                 className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs transition shadow-md shadow-indigo-600/20 disabled:opacity-60 cursor-pointer"
-                title="Cruzar dados em Cartórios, Diários Oficiais, Licitações, Redes e Vagas"
+                title="Consultar o telefone publicado para o CNPJ informado"
               >
                 {isInvestigatingPhone ? (
                   <>
                     <RotateCw className="h-3.5 w-3.5 animate-spin text-white" />
-                    <span>Auditando 7 Fontes Públicas...</span>
+                    <span>Consultando cadastro CNPJ...</span>
                   </>
                 ) : (
                   <>
                     <Search className="h-3.5 w-3.5 text-indigo-200" />
-                    <span>Investigar Telefone Real</span>
+                    <span>Consultar Telefone Cadastral</span>
                   </>
                 )}
               </button>
@@ -580,7 +582,7 @@ export function WhatsAppPitchModal({
                 title="Exibir atalhos diretos para Diários Oficiais, Cartório, Licitações, Vagas e Redes"
               >
                 <Globe className="h-3.5 w-3.5 text-cyan-400" />
-                <span>Consultas Oficiais (7 Fontes)</span>
+                <span>Atalhos de busca (não auditados)</span>
                 {showDeepSources ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
               </button>
             </div>
