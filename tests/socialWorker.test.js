@@ -25,3 +25,25 @@ test('sources discovered within reserved Serper budget are sent to free worker b
  const result=await startSocialRadar({query:'tinta',location:'Paracatu MG',count:1,sourceUrls:[]},{apifyToken:'fixture',serperKey:'fixture',paidPermit:{actorUsd:.1,maxActors:1,serperQueries:1},collectDiscovered:async urls=>{assert.deepEqual(urls,[discovered]);collected=true;return true;},fetcher:async endpoint=>{assert.equal(endpoint,'https://google.serper.dev/search');return {ok:true,json:async()=>({organic:[{link:discovered}]})};}});
  assert.equal(result.done,true);assert.equal(collected,true);assert.equal(result.job,undefined);
 });
+
+test('malformed worker responses produce actionable errors without exposing their body', async()=>{
+ const deps={workerUrl:'https://worker.example.test',workerToken:'fixture'};
+ for(const body of ['<html>private proxy detail</html>','', 'null', '{']) {
+  await assert.rejects(collectSocialWorker({}, {...deps,workerFetcher:async()=>new Response(body)}),error=>{
+   assert.equal(error.status,502);
+   assert.match(error.message,/Worker|worker/);
+   assert.doesNotMatch(error.message,/private proxy detail|Unexpected|Cannot read/);
+   return true;
+  });
+ }
+ for(const data of [{records:[],reports:[null]},{records:[],reports:[{errors:'broken'}]},{records:[],reports:[],pending:{}}]) {
+  await assert.rejects(collectSocialWorker({}, {...deps,workerFetcher:async()=>Response.json(data)}),/incompatível/);
+ }
+ await assert.rejects(collectSocialWorker({}, {...deps,workerUrl:'invalid'}),/origem HTTPS/);
+});
+
+test('invalid entries do not discard valid worker evidence or create pending empty platforms',async()=>{
+ const result=await collectSocialWorker({}, {workerUrl:'https://worker.example.test',workerToken:'fixture',workerFetcher:async()=>Response.json({records:[null,record,{}],reports:[],pending:[null,{}, {url:'https://example.test',platform:''},{url,platform:'instagram'}]})});
+ assert.deepEqual(result.records,[record]);
+ assert.deepEqual(result.pending,[{url,platform:'instagram'}]);
+});

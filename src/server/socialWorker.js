@@ -6,7 +6,8 @@ export async function collectSocialWorker(body,deps={}) {
   const origin=deps.workerUrl ?? process.env.SOCIAL_WORKER_URL;
   const token=deps.workerToken ?? process.env.SOCIAL_WORKER_TOKEN;
   if(!origin||!token)return {records:[],pending:[],reports:[{source:'Worker social',status:'blocked',consulted:false,errors:[],limits:['worker não configurado: configure SOCIAL_WORKER_URL e SOCIAL_WORKER_TOKEN no servidor.']}]};
-  const url=new URL(origin);
+  let url;
+  try {url=new URL(origin);} catch {throw new SearchError('SOCIAL_WORKER_URL inválida: informe uma origem HTTPS.',503);}
   if(url.protocol!=='https:'||url.username||url.password||url.search||url.hash||url.pathname!=='/'||(url.port&&url.port!=='443'))throw new SearchError('SOCIAL_WORKER_URL deve ser uma origem HTTPS sem credenciais/caminho.',503);
   const response=await (deps.workerFetcher||fetch)(new URL('/collect',url),{
     method:'POST',headers:{Authorization:`Bearer ${token}`,'Content-Type':'application/json'},
@@ -19,9 +20,20 @@ export async function collectSocialWorker(body,deps={}) {
   if(response.body?.getReader){const reader=response.body.getReader();try{while(true){const {done,value}=await reader.read();if(done)break;size+=value.byteLength;if(size>1500000){await reader.cancel();throw new SearchError('Resposta do worker excede limite.',502);}text+=decoder.decode(value,{stream:true});}}finally{reader.releaseLock();}}
   else text=JSON.stringify(await response.json());
   text+=decoder.decode();
-  const data=JSON.parse(text);
-  if(!Array.isArray(data.records)||data.records.length>200||!Array.isArray(data.reports)||data.reports.length>12)throw new SearchError('Resposta do worker incompatível.',502);
-  data.records=data.records.filter(r=>typeof r.text==='string'&&r.text.length<=6000&&typeof r.name==='string'&&r.name.length<=150&&publication(r.sourceUrl,r.platform)&&publicAuthor(r.authorUrl,r.platform));
-  data.pending=(data.pending||[]).filter(s=>socialPlatform(s.url)===s.platform).slice(0,9);
+  let data;
+  try {data=JSON.parse(text);} catch {throw new SearchError('Worker retornou resposta sem JSON válido. Verifique a URL e os logs do serviço.',502);}
+  const validReport = r => r && typeof r === 'object' && !Array.isArray(r)
+    && (r.source === undefined || typeof r.source === 'string')
+    && ['errors', 'limits'].every(key => r[key] === undefined
+      || (Array.isArray(r[key]) && r[key].every(value => typeof value === 'string')));
+  if (!data || typeof data !== 'object'
+    || !Array.isArray(data.records) || data.records.length > 200
+    || !Array.isArray(data.reports) || data.reports.length > 12
+    || !data.reports.every(validReport)
+    || (data.pending !== undefined && !Array.isArray(data.pending))) {
+    throw new SearchError('Resposta do worker incompatível.', 502);
+  }
+  data.records=data.records.filter(r=>r&&typeof r==='object'&&typeof r.text==='string'&&r.text.length<=6000&&typeof r.name==='string'&&r.name.length<=150&&publication(r.sourceUrl,r.platform)&&publicAuthor(r.authorUrl,r.platform));
+  data.pending=(data.pending||[]).filter(s=>s&&typeof s==='object'&&socialPlatform(s.url)&&socialPlatform(s.url)===s.platform).slice(0,9);
   return data;
 }
