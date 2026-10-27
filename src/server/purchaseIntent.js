@@ -1,3 +1,4 @@
+import {isNationalScope} from '../utils/searchScope.js';
 import { normalize } from "./verifiedSearch.js";
 const stop = new Set([
   "de",
@@ -21,6 +22,8 @@ const stop = new Set([
 ]);
 export function productQuery(raw) {
   return String(raw || "")
+    .replace(/^(?:busco|procuro|buscar|encontrar|quero|preciso de)\s+(?=comprador)/i, "")
+    .replace(/^(?:compradores|compradoras|comprador|compradora)\s+(?:de|para)\s+/i, "")
     .replace(/^(?:compra|comprar)\s+(?:de\s+)?/i, "")
     .replace(
       /^(?:pessoas?|clientes?)\s+(?:querendo|que\s+quer(?:em)?|procurando|buscando)\s+(?:comprar\s+)?/i,
@@ -53,9 +56,13 @@ export function productVariants(raw) {
   return [...new Set(variants)].slice(0, 6);
 }
 export function intentAssessment(text, rawQuery) {
+  const concentrations = value => [...String(value).matchAll(/(\d+(?:[.,]\d+)?)\s*%/g)].map(m => Number(m[1].replace(',', '.')));
+  const requestedConcentrations = concentrations(rawQuery);
+  const observedConcentrations = concentrations(text);
+  const exactConcentration = requestedConcentrations.every(value => observedConcentrations.includes(value));
   const n = normalize(text),
     variants = productVariants(rawQuery);
-  const matched = variants.find((v) => {
+  const matched = exactConcentration && variants.find((v) => {
     const words = normalize(v)
       .split(" ")
       .filter((w) => !stop.has(w));
@@ -102,6 +109,13 @@ export function intentAssessment(text, rawQuery) {
   };
 }
 export function declaredRegion(text, location) {
+  if (isNationalScope(location)) {
+    // A nationwide request removes the city filter, but does not prove residence.
+    const match = String(text).match(/\b(?:moro em|sou de|resido em|estou em)\s+([^.!?\n]{2,70}?(?:\bBrasil\b|[, -]+(?:AC|AL|AP|AM|BA|CE|DF|ES|GO|MA|MT|MS|MG|PA|PB|PR|PE|PI|RJ|RN|RS|RO|RR|SC|SP|SE|TO)\b))/i);
+    return match
+      ? {matched:true, status:'self_declared_in_post', excerpt:match[0], label:match[1], authorDeclared:match[0]}
+      : {matched:false, status:'unconfirmed', excerpt:'', label:''};
+  }
   if (!location)
     return { matched: true, excerpt: "", label: "", status: "not_requested" };
   const city = String(location)

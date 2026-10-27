@@ -1,3 +1,4 @@
+import {isBuyerSearch, buyerLocation} from '../utils/searchScope.js';
 import {RadarExecutionReport} from './RadarExecutionReport';
 import type {ExecutionReport} from '../types';
 import { MarketplaceInsights } from './MarketplaceInsights';
@@ -327,10 +328,10 @@ export function ExtractionHero({
 
       // 🔀 ROTEAMENTO: B2C (Radar de Intenção de Compra) vs B2B (Empresas & Decisores)
       let response;
-      if (targetEntityType === 'pf') {
+      if (isBuyerSearch(searchTerm, targetEntityType)) {
         setLoadingStatus(`🎯 Rastreando menções públicas de pessoas buscando comprar "${effectiveTerm}"...`);
         await new Promise((r) => setTimeout(r, 150));
-        response = await searchB2CLeads(effectiveTerm, effectiveLoc, leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
+        response = await searchB2CLeads(effectiveTerm, buyerLocation(effectiveLoc), leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
       } else {
         setLoadingStatus('Extraindo contatos diretos (PF & PJ), intenção de busca e localização...');
         response = await searchGoogleLeads(
@@ -439,8 +440,8 @@ export function ExtractionHero({
     try {
       // Para B2C, prioriza fontes pendentes explicitamente retornadas pelo worker.
       let response;
-      if (targetEntityType === 'pf') {
-        response = await searchB2CLeads(effectiveTerm, locationTerm, leadCount, pendingSocialSources.length ? pendingSocialSources.map(s=>s.url) : socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
+      if (isBuyerSearch(searchTerm, targetEntityType)) {
+        response = await searchB2CLeads(effectiveTerm, buyerLocation(locationTerm), leadCount, pendingSocialSources.length ? pendingSocialSources.map(s=>s.url) : socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
       } else {
         response = await searchGoogleLeads(
           effectiveTerm,
@@ -1067,14 +1068,14 @@ export function ExtractionHero({
                     </span>
                   </div>
                   <div className="text-[10px] text-zinc-500">
-                    Localidade solicitada: <strong className="text-zinc-300">{locationTerm || 'Não especificada'}</strong>
+                    Localidade solicitada: <strong className="text-zinc-300">{locationTerm || 'Brasil — sem filtro municipal'}</strong>
                   </div>
                 </div>
               </div>
 
             </div>
 
-            {targetEntityType === 'pf' && <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+            {isBuyerSearch(searchTerm, targetEntityType) && <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
               <label htmlFor="social-source-links" className="text-xs text-zinc-300">Origens públicas opcionais: grupos, posts/reels, vídeos e anúncios de marketplaces</label>
               <textarea id="social-source-links" value={socialSourceLinks} onChange={e=>setSocialSourceLinks(e.target.value)} disabled={isLoading || isLoadingMore} rows={2} placeholder="Cole links públicos, separados por espaço. Em branco: descoberta por produto e região." className="mt-2 w-full rounded bg-zinc-950 p-2 text-xs text-zinc-200" />
               <label className="mt-2 flex gap-2 text-xs text-zinc-300"><input type="checkbox" checked={includeMarketplaces} onChange={e=>setIncludeMarketplaces(e.target.checked)} disabled={isLoading || isLoadingMore}/>Analisar também produtos da Shopee e perguntas públicas do Mercado Livre</label>
@@ -1277,7 +1278,7 @@ export function ExtractionHero({
                 </div>
                 {(searchTerm || locationTerm) && (
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Filtro: <strong className="text-zinc-200">{searchTerm || 'Geral'}</strong> {locationTerm ? <>em <strong className="text-emerald-300">{locationTerm}</strong></> : ''} • {targetEntityType === 'pf' ? <span className="text-purple-300 font-medium">Radar de Intenção (B2C)</span> : <span className="text-amber-300 font-medium">Gerente de Compras & Suprimentos</span>}
+                    Filtro: <strong className="text-zinc-200">{searchTerm || 'Geral'}</strong> {locationTerm ? <>em <strong className="text-emerald-300">{locationTerm}</strong></> : ''} • {isBuyerSearch(searchTerm, targetEntityType) ? <span className="text-purple-300 font-medium">Radar de intenção de compra</span> : <span className="text-amber-300 font-medium">Gerente de Compras & Suprimentos</span>}
                   </p>
                 )}
               </div>

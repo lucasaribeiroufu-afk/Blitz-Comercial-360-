@@ -1,3 +1,4 @@
+import {isBuyerSearch, isNationalScope} from '../utils/searchScope.js';
 import {structuralPhone} from './professionalContacts.js';
 import {enrichBusinessContacts} from './businessContacts.js';
 /** Evidence-only collection. No model output or synthetic database is used here. */
@@ -105,7 +106,7 @@ function result(leads, p, warnings = []) {
 }
 const UF = new Set('AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(' '));
 export function matchesLocation(place, location) {
-  if (!location) return true;
+  if (isNationalScope(location)) return true;
   const parts = location.trim().split(/[,\-]/).map(s => s.trim()).filter(Boolean);
   let state = parts.at(-1)?.toUpperCase(), city = parts[0];
   if (!UF.has(state)) { const match = location.match(/\s+([A-Za-z]{2})$/); state = match && UF.has(match[1].toUpperCase()) ? match[1].toUpperCase() : ''; if (state) city = location.slice(0, match.index).trim(); }
@@ -117,7 +118,7 @@ export function matchesLocation(place, location) {
 export async function searchBusinesses(body, deps = {}) {
   const p = input(body);
   if (/^[\d.\/-]+$/.test(p.query)) { const lead = await cnpjLookup(p.query, deps); return result(!p.location || matchesLocation({addressComponents:lead.addressComponents},p.location) ? [lead] : [], p); }
-  if (p.targetEntityType === 'pf') {const {startBuyerRadar}=await import('./buyerRadar.js');return startBuyerRadar(body,deps);}
+  if (isBuyerSearch(p.query, p.targetEntityType)) {const {startBuyerRadar}=await import('./buyerRadar.js');return startBuyerRadar(body,deps);}
   const key = deps.mapsKey ?? (process.env.GOOGLE_MAPS_API_KEY || process.env.CHAVE_API_DO_GOOGLE_MAPS);
   if (!key) throw new SearchError('Configure GOOGLE_MAPS_API_KEY no servidor e habilite Places API (New).', 503);
   const leads = [], seen = new Set(), excluded = new Set((p.excludeNames || []).map(normalize));

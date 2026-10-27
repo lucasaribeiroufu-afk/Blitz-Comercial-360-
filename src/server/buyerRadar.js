@@ -1,3 +1,4 @@
+import {buyerLocation} from '../utils/searchScope.js';
 import { SearchError, normalize } from "./verifiedSearch.js";
 import { startSocialRadar, pollSocialRadar, verifyJob } from "./socialRadar.js";
 import { productQuery } from "./purchaseIntent.js";
@@ -93,7 +94,7 @@ function answer(
 }
 export async function startBuyerRadar(body, deps = {}) {
   const query = productQuery(body.query),
-    location = String(body.location || "").trim(),
+    location = buyerLocation(body.location),
     count = Number(body.count ?? 30);
   if (
     !query ||
@@ -105,7 +106,7 @@ export async function startBuyerRadar(body, deps = {}) {
     count > 100
   )
     throw new SearchError(
-      "Informe produto, Cidade - UF e quantidade de 1 a 100.",
+      "Informe produto, Brasil ou Cidade - UF e quantidade de 1 a 100.",
       400,
     );
   const manual = body.sourceUrls ?? [];

@@ -95,3 +95,11 @@ A rotina HTTP, fila limitada, normalização, relatório e funções Node funcio
 Os testes automatizados usam fontes simuladas. Não há nesta revisão evidência de coleta real autenticada na prévia: este ambiente não tem tokens de fontes nem sessão do usuário, e o proxy bloqueia o domínio da prévia. A próxima busca real e configuração de IAM/ledger necessitam ação do operador. Consultar documentação de bibliotecas é pesquisa real de documentação, não prova de coleta de compradores.
 
 Referências oficiais: [Apify limites](https://docs.apify.com/api/v2/users-me-limits-get), [ActorStartOptions](https://docs.apify.com/api/client/js/reference/interface/ActorStartOptions), [metadados do Actor](https://docs.apify.com/api/v2/act-get).
+
+## Pedidos de compradores e cobertura nacional
+
+Pedidos explícitos como `compra de iodo 10%` e `compradores de iodo 10%` seguem para o radar de intenção mesmo com público `Ambos` ou `Pessoa Jurídica`. A busca de estabelecimentos no Places não comprova demanda pelo produto. A classificação do autor como pessoa física ou empresa não é inferida do pedido.
+
+Campo de região vazio, `Brasil`, `Brasil todo` ou `todo o Brasil` usa escopo nacional, sem cidade padrão. Isso amplia o escopo consultado, não comprova residência nem cobertura de todo o país: autores sem evidência regional permanecem na seção de região não comprovada. Um anúncio de venda de iodo não se torna comprador. A concentração percentual pedida precisa aparecer na evidência; 1%, 10% e 10,5% não são intercambiáveis.
+
+O roteamento não configura nem implanta o worker e não garante acesso às redes. Sem fonte acessível ou orçamento persistente configurado, o relatório informa o bloqueio e não retorna empresas de uma lista interna. Os testes de regressão deste fluxo usam fontes simuladas, sem coleta de compradores reais.

@@ -1,3 +1,4 @@
+import {buyerLocation} from '../utils/searchScope.js';
 import { sourceReport, classifyRecords, finishReport } from "./radarReport.js";
 import { marketplacePlans, normalizeMarketplaceRows } from "./marketplaces.js";
 import { createHmac, timingSafeEqual } from "node:crypto";
@@ -363,7 +364,7 @@ export async function startSocialRadar(body, deps = {}) {
       503,
     );
   const query = productQuery(body.query),
-    location = String(body.location || "").trim(),
+    location = buyerLocation(body.location),
     count = Number(body.count || 30);
   if (
     !query ||
