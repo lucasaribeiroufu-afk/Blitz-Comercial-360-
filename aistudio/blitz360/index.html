@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="pt-BR" class="dark">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Blitz 360 PRO | Prospecção & Inteligência de Vendas B2B/B2C</title>
+    <meta name="description" content="Plataforma de inteligência comercial, prospecção e captação de clientes B2B & B2C, OSINT corporativo, calculadora CIF/FOB e scripts de WhatsApp." />
+    <meta property="og:title" content="Blitz 360 PRO | Prospecção & Inteligência de Vendas B2B/B2C" />
+    <meta property="og:description" content="Plataforma de inteligência comercial, prospecção e captação de clientes B2B & B2C, OSINT corporativo, calculadora CIF/FOB e scripts de WhatsApp." />
+    <meta property="og:type" content="website" />
+    <meta name="theme-color" content="#09090b" />
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='%236366f1'><path d='M13 2L3 14h9l-1 8 10-12h-9l1-8z'/></svg>" />
+    <script>
+      // Suppress Vite HMR WebSocket connection errors (HMR is disabled in AI Studio iFrame environment)
+      window.addEventListener('unhandledrejection', function(event) {
+        if (event && event.reason && (
+          String(event.reason.message || '').includes('WebSocket') ||
+          String(event.reason.message || '').includes('closed without opened') ||
+          String(event.reason).includes('WebSocket')
+        )) {
+          event.preventDefault();
+        }
+      });
+      window.addEventListener('error', function(event) {
+        if (event && (
+          String(event.message || '').includes('WebSocket') ||
+          String(event.filename || '').includes('@vite/client')
+        )) {
+          event.preventDefault();
+        }
+      });
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+  </head>
+  <body class="bg-zinc-950 text-zinc-100 font-['Plus_Jakarta_Sans',sans-serif] antialiased selection:bg-indigo-500/30 selection:text-indigo-200">
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
+</html>
+

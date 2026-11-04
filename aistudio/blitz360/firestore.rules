@@ -1,0 +1,18 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    match /blitz_server_v2_users/{document=**} {
+      allow read, write: if false;
+    }
+    match /users/{uid}/{collection}/{id} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      // Operational records, dedupe aliases and cost quotas are server owned.
+      // All mutations go through authenticated /api routes using Firebase Admin.
+      allow write: if false;
+    }
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
+    }
+  }
+}

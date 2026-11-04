@@ -1,0 +1,42 @@
+{
+  "name": "blitz-360-pro",
+  "private": true,
+  "version": "2.0.0",
+  "description": "Plataforma avan\u00e7ada de intelig\u00eancia comercial, prospec\u00e7\u00e3o de vendas B2B/B2C, OSINT corporativo e extra\u00e7\u00e3o de contatos.",
+  "license": "MIT",
+  "type": "module",
+  "scripts": {
+    "dev": "node --import tsx server.ts",
+    "build": "vite build --outDir dist/public && esbuild server.ts --bundle --platform=node --format=esm --packages=external --sourcemap --outfile=dist/server.js",
+    "start": "NODE_ENV=production node dist/server.js",
+    "preview": "vite preview",
+    "lint": "tsc --noEmit",
+    "test": "node --import tsx --test tests/*.test.ts"
+  },
+  "dependencies": {
+    "@google/genai": "^2.4.0",
+    "@tailwindcss/vite": "^4.1.14",
+    "@vitejs/plugin-react": "^5.0.4",
+    "dotenv": "^17.2.3",
+    "express": "^4.21.2",
+    "firebase": "^12.18.0",
+    "firebase-admin": "^14.5.0",
+    "lucide-react": "^0.546.0",
+    "motion": "^12.23.24",
+    "react": "^19.0.1",
+    "react-dom": "^19.0.1",
+    "vite": "^6.2.3"
+  },
+  "devDependencies": {
+    "@types/express": "^4.17.21",
+    "@types/node": "^22.14.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "autoprefixer": "^10.4.21",
+    "esbuild": "^0.25.0",
+    "tailwindcss": "^4.1.14",
+    "tsx": "^4.21.0",
+    "typescript": "~5.8.2",
+    "vite": "^6.2.3"
+  }
+}
