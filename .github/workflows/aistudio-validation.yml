@@ -1,0 +1,44 @@
+name: Validar Blitz 360 AI Studio
+on:
+  pull_request:
+    paths:
+      - 'aistudio/blitz360/**'
+      - 'api/demand-radar.js'
+      - 'src/server/**'
+      - 'tests/demandFreeOnly.test.js'
+      - '.github/workflows/aistudio-validation.yml'
+  push:
+    branches:
+      - 'codex/blitz360-aistudio-import-20261104'
+    paths:
+      - 'aistudio/blitz360/**'
+      - 'api/demand-radar.js'
+      - 'src/server/**'
+      - 'tests/demandFreeOnly.test.js'
+      - '.github/workflows/aistudio-validation.yml'
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    defaults:
+      run:
+        working-directory: aistudio/blitz360
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            aistudio/blitz360/package-lock.json
+      - run: npm ci
+        working-directory: .
+      - run: node --test tests/demandFreeOnly.test.js
+        working-directory: .
+      - run: npm ci
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
