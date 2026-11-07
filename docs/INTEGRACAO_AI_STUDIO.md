@@ -36,3 +36,9 @@ npm run build
 ```
 
 O workflow aistudio-validation.yml verifica somente esta cópia, sem secrets nem chamadas Apify reais. Esta branch não implica deploy, fusão no main ou comprovação de intenção de compra em tempo real.
+
+## Integração do radar público
+
+A aba **Radar de demanda** recebe o produto e a região da prospecção. A API autenticada do aplicativo encaminha a consulta para a rota `/api/demand-radar` da Vercel, usando a mesma sessão Firebase e o coletor público existente. A rota isola a execução gratuita do cache e do orçamento da etapa paga. O aplicativo aceita publicações com data de até 30 dias, URL e trecho do pedido. Ao salvar na carteira, a evidência fica vinculada ao registro e a consulta entra na limpeza reversível.
+
+Para validar ao vivo, publicar a rota da Vercel e implantar `aistudio/blitz360` como serviço Node com `npm ci && npm run build` e `npm start`. Autorizar o domínio do aplicativo no Firebase Auth e usar uma identidade de serviço com acesso ao Firestore do projeto. O Maps continua exigindo APIFY_TOKEN no servidor Node e teto autorizado pelo operador. O radar público pode consultar links explícitos e fontes fornecidas pelo worker já configurado na raiz. Testar primeiro com um link público datado, depois com o worker e as fontes escolhidas para o monitoramento.

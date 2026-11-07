@@ -1,6 +1,7 @@
 import { useEffect, useState, type ReactNode, type FormEvent } from "react";
 import type { User } from "firebase/auth";
 import { auth, onAuthStateChanged, logOut } from "./lib/firebase";
+import { DemandRadar } from "./components/DemandRadar";
 import { LoginScreen } from "./components/LoginScreen";
 import { api, send, clearLegacyCache } from "./services/api";
 import {
@@ -642,8 +643,9 @@ function Workspace({ user }: { user: User }) {
             "Registro anterior: fonte ainda não comprovada."
           )}
           <p className="mt-2">
-            Intenção de compra não comprovada. Telefone publicado não confirma
-            WhatsApp nem decisor.
+            {c.origin === "demand"
+              ? "Pedido público registrado. Confirme com o autor se ainda está aberto."
+              : "Contato para prospecção. Confirme a demanda e o canal com a empresa."}
           </p>
         </div>
         {c.nextAction && (
@@ -731,6 +733,7 @@ function Workspace({ user }: { user: User }) {
         <nav className="flex flex-wrap gap-2">
           {[
             ["search", "Prospecção"],
+            ["demand", "Radar de demanda"],
             ["crm", "Carteira comercial"],
             ["settings", "Operação e limpeza"],
           ].map(([k, label]) => (
@@ -788,6 +791,7 @@ function Workspace({ user }: { user: User }) {
             {notice}
           </div>
         )}
+        {tab === "demand" && <DemandRadar product={product} region={region} onSaved={refresh} />}
         {tab === "search" && (
           <>
             <section className="rounded-2xl border border-zinc-800 bg-gradient-to-br from-zinc-900 to-indigo-950/25 p-5 md:p-7">

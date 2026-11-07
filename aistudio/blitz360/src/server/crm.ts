@@ -27,6 +27,7 @@ function key(kind: string, value: string) {
   return createHash("sha256").update(`${kind}:${value}`).digest("hex");
 }
 function keys(c: any) {
+  if (c.origin === "demand") return [key("demand", c.sourceId)];
   return [
     cnpjKey(c.cnpj) && key("cnpj", cnpjKey(c.cnpj)),
     text(c.sourceUrl || c.profileUrl, 1500) &&
@@ -79,7 +80,21 @@ export class CrmService {
   }
   async save(uid: string, body: any) {
     let c: any;
-    if (body.requestId && body.sourceId) {
+    const demandRunId = text(body.demandRunId, 80);
+    if (demandRunId && body.sourceId) {
+      const run = await this.repo.get(uid, "demand_runs", demandRunId);
+      const lead = run?.leads?.find((item: any) => item.sourceId === body.sourceId);
+      if (!lead || run?.uid !== uid || run.archived === true)
+        throw new ApiError(404, "DEMAND_NOT_FOUND", "Publicação indisponível nesta conta.");
+      c = {
+        ...lead,
+        origin: "demand",
+        profileUrl: lead.sourceUrl,
+        notes: `Sinal público de compra em ${new Date(lead.publishedAt).toISOString().slice(0, 10)}.
+${lead.excerpt}
+${lead.sourceUrl}`,
+      };
+    } else if (body.requestId && body.sourceId) {
       const run = await this.repo.get(
         uid,
         "apify_runs",
@@ -118,6 +133,11 @@ export class CrmService {
     );
     const id = randomUUID();
     return this.repo.transaction(uid, async (t) => {
+      if (c.origin === "demand") {
+        const run = await t.get("demand_runs", demandRunId);
+        if (!run || run.archived === true)
+          throw new ApiError(404, "DEMAND_NOT_FOUND", "Publicação indisponível nesta conta.");
+      }
       const refs = await Promise.all(
         aliases.map((k) => t.get("contact_keys", k)),
       );
@@ -247,15 +267,15 @@ export class CrmService {
       .sort((a, b) => b.createdAt - a.createdAt);
   }
   async inventory(uid: string) {
-    const [contacts, runs, batches] = await Promise.all(
-      ["contacts", "apify_runs", "cleanup_batches"].map((c) =>
+    const [contacts, runs, batches, demandRuns] = await Promise.all(
+      ["contacts", "apify_runs", "cleanup_batches", "demand_runs"].map((c) =>
         this.repo.list(uid, c),
       ),
     );
     return {
       contacts: contacts.filter((r) => r.archived !== true).length,
       archivedContacts: contacts.filter((r) => r.archived === true).length,
-      searches: runs.filter((r) => r.archived !== true).length,
+      searches: [...runs, ...demandRuns].filter((r) => r.archived !== true).length,
       running: runs.filter((r) => !TERMINAL.has(r.status)).length,
       lastBatch:
         batches
@@ -274,10 +294,11 @@ export class CrmService {
         "Lote não encontrado para este usuário.",
       );
     if (!manifest) {
-      const [contacts, runs] = await Promise.all(
-        ["contacts", "apify_runs"].map((c) => this.repo.list(uid, c)),
+      const [contacts, runs, demandRuns] = await Promise.all(
+        ["contacts", "apify_runs", "demand_runs"].map((c) => this.repo.list(uid, c)),
       );
       const targets = [
+        ...demandRuns.filter((r) => r.archived !== true).map((r) => ({ collection: "demand_runs", id: r.id })),
         ...contacts
           .filter((r) => r.archived !== true)
           .map((r) => ({ collection: "contacts", id: r.id })),

@@ -9,12 +9,14 @@ import {
   type Repository,
 } from "./src/server/repository";
 import { ApiError, ApifyService, text } from "./src/server/apify";
+import { collectDemand } from "./src/server/demand";
 import { CrmService } from "./src/server/crm";
 
 export interface ApiDependencies {
   repo?: Repository;
   verify?: (token: string) => Promise<string>;
   apify?: ApifyService;
+  demandTransport?: typeof fetch;
 }
 function bounded(value: string | undefined, fallback: number, max: number) {
   const n = value === undefined ? fallback : Number(value);
@@ -106,6 +108,12 @@ export function createApi(deps: ApiDependencies = {}) {
         ],
       }),
     ),
+  );
+  app.post(
+    "/api/demand",
+    route(async (req, res) => res.json(await collectDemand(
+      repo, req.uid, req.headers.authorization, req.body ?? {}, deps.demandTransport,
+    ))),
   );
   app.post(
     "/api/searches",

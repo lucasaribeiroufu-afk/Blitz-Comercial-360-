@@ -455,3 +455,51 @@ test('collected contacts must reference a real owned dataset lead', async () => 
   assert.equal((await repo.get('A', 'contacts', saved.id))?.name, 'Fonte real');
   await assert.rejects(crm.save('B', { requestId: 'r', sourceId: 'place-id' }), (e: any) => e.code === 'LEAD_NOT_COLLECTED');
 });
+
+test("public demand keeps dated evidence, saves only to the owning CRM and restores the search", async (t) => {
+  const repo = new MemoryRepository();
+  const signal = {
+    recordType: "purchase_mention",
+    name: "Solicitante de teste",
+    location: "Uberlândia - MG",
+    publishedAt: new Date(Date.now() - 86400000).toISOString(),
+    phone: "11999999999",
+    evidence: { intent: { sourceUrl: "https://example.test/post/1", excerpt: "Preciso comprar iodo 10%." } },
+  };
+  const app = createApi({
+    repo,
+    verify: async (token) => token,
+    demandTransport: async (url, options) => {
+      assert.equal(url, "https://blitz-comercial-360.vercel.app/api/demand-radar");
+      assert.equal(new Headers(options?.headers).get("authorization"), "Bearer A");
+      assert.equal(JSON.parse(String(options?.body)).query, "iodo 10%");
+      return Response.json({ done: true, leads: [
+        signal, signal, { ...signal, publishedAt: "" }, { ...signal, publishedAt: "2000-01-01" },
+      ] });
+    },
+  });
+  const server = app.listen(0, "127.0.0.1");
+  await new Promise<void>((resolve) => server.once("listening", resolve));
+  t.after(() => new Promise<void>((resolve) => server.close(() => resolve())));
+  const base = `http://127.0.0.1:${(server.address() as { port: number }).port}`;
+  const post = (path: string, token: string, body: object) => fetch(base + path, {
+    method: "POST", headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  const response = await post("/api/demand", "A", { query: "iodo 10%", location: "Uberlândia - MG" });
+  assert.equal(response.status, 200);
+  const result = await response.json();
+  assert.equal(result.leads.length, 1);
+  assert.equal(result.leads[0].phone, "");
+  const save = { demandRunId: result.id, sourceId: result.leads[0].sourceId };
+  assert.equal((await post("/api/contacts", "B", save)).status, 404);
+  const saved = await post("/api/contacts", "A", save);
+  assert.equal(saved.status, 200);
+  const crm = new CrmService(repo);
+  assert.equal((await repo.get("A", "contacts", (await saved.json()).id))?.sourceUrl, signal.evidence.intent.sourceUrl);
+  const batch = await crm.archive("A");
+  assert.equal(batch.searches, 1);
+  assert.equal((await post("/api/contacts", "A", save)).status, 404);
+  await crm.restore("A", batch.batchId);
+  assert.equal((await crm.inventory("A")).searches, 1);
+});
