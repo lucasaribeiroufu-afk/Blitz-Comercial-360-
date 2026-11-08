@@ -3,6 +3,6 @@
   "private": true,
   "type": "module",
   "engines": {"node": ">=22"},
-  "scripts": {"start": "node server.js", "test": "node --test tests/*.test.js", "smoke": "node smoke.js"},
+  "scripts": {"build": "node --check server.js && node --check collector.js", "start": "node server.js", "test": "node --test tests/*.test.js", "smoke": "node smoke.js"},
   "dependencies": {"playwright-core": "1.64.1", "robots-parser": "3.0.1"}
 }
