@@ -28,7 +28,7 @@ export function createApi(deps: ApiDependencies = {}) {
   const apify =
     deps.apify ||
     new ApifyService(repo, {
-      token: process.env.APIFY_TOKEN,
+      token: process.env.APIFY_TOKEN?.trim() || process.env.APIFY_API_TOKEN?.trim(),
       maxRunUsd: bounded(process.env.APIFY_MAX_RUN_USD, 0.5, 2),
       dailyUsd: bounded(process.env.APIFY_DAILY_BUDGET_USD, 5, 20),
     });
