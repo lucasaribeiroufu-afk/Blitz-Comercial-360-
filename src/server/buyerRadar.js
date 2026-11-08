@@ -3,6 +3,7 @@ import { SearchError, normalize } from "./verifiedSearch.js";
 import { startSocialRadar, pollSocialRadar, verifyJob } from "./socialRadar.js";
 import { productQuery } from "./purchaseIntent.js";
 import {collectSocialWorker, socialPlatform} from "./socialWorker.js";
+import { collectPncp } from "./pncpRadar.js";
 import { collectPublicUrl } from "./publicBuyerSources.js";
 import {
   radarKey,
@@ -189,6 +190,20 @@ async function execute(body, key, deps) {
         errors: ["Armazenamento indisponível; etapa paga bloqueada."],
       }),
     );
+  }
+  const pncpReport = sourceReport("PNCP — propostas abertas", { kind: "content", consulted: true });
+  sources.push(pncpReport);
+  try {
+    const procurement = await (deps.collectPncp || collectPncp)(body, { now, transport: deps.pncpTransport });
+    pncpReport.received = procurement.received;
+    pncpReport.qualified = procurement.leads.length;
+    pncpReport.status = procurement.failures && !procurement.received ? "blocked" : "limited";
+    pncpReport.limits.push("Amostra: primeira página de três modalidades e até oito editais candidatos.");
+    if (procurement.failures) pncpReport.errors.push("Parte das consultas ao PNCP falhou.");
+    leads.push(...procurement.leads.slice(0, body.count));
+  } catch {
+    pncpReport.status = "blocked";
+    pncpReport.errors.push("Consulta ao PNCP indisponível.");
   }
   let pendingSources = [];
   const socialUrls = body.sourceUrls.filter(socialPlatform);
