@@ -132,6 +132,7 @@ export async function startBuyerRadar(body, deps = {}) {
     count,
     urls: [...urls].sort(),
     markets: !!body.includeMarketplaces,
+    freeOnly: deps.freeOnly === true,
     worker: !!process.env.SOCIAL_WORKER_URL,
   });
   if (inflight.has(key)) return inflight.get(key);
@@ -156,7 +157,7 @@ async function execute(body, key, deps) {
     now = deps.now || Date.now();
   let store;
   try {
-    store = deps.store !== undefined ? deps.store : createRadarStore();
+    store = deps.freeOnly ? null : deps.store !== undefined ? deps.store : createRadarStore();
   } catch {
     sources.push(
       sourceReport("Armazenamento persistente", {
@@ -308,7 +309,7 @@ async function execute(body, key, deps) {
     result.pendingSources = pendingSources;
   }
   const respond = () => answer(leads, unknown, sources, body.query, body.location, true, {pendingSources});
-  const limits = deps.limits || paidLimits(),
+  const limits = deps.freeOnly ? { enabled: false } : deps.limits || paidLimits(),
     token = deps.apifyToken ?? process.env.APIFY_API_TOKEN;
   const gate = sourceReport("Etapa paga", {
     kind: "control",
@@ -319,7 +320,7 @@ async function execute(body, key, deps) {
   sources.push(gate);
   if (!limits.enabled) {
     gate.limits.push(
-      "Orçamento ausente ou inconsistente; nenhuma API paga foi chamada.",
+      deps.freeOnly ? "Consulta restrita às fontes públicas gratuitas." : "Orçamento ausente ou inconsistente; nenhuma API paga foi chamada.",
     );
     return respond();
   }
