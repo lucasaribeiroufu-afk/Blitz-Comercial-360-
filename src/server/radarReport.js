@@ -60,10 +60,7 @@ export function classifyRecords(
       continue;
     }
     const date = Date.parse(record.publishedAt);
-    if (
-      Number.isFinite(date) &&
-      (date > now + 86400000 || now - date > maxAge)
-    ) {
+    if (!Number.isFinite(date) || date > now || now - date > maxAge) {
       report.discarded.data++;
       continue;
     }
@@ -97,15 +94,6 @@ export function classifyRecords(
     lead.authorDeclaredLocation = region.authorDeclared || "";
     lead.publicationLocation = region.publicationMention || "";
     lead.groupContext = record.groupContext || "";
-    if (
-      !Number.isFinite(date) &&
-      !report.limits.includes(
-        "Data da publicação não informada; atualidade não comprovada.",
-      )
-    )
-      report.limits.push(
-        "Data da publicação não informada; atualidade não comprovada.",
-      );
     if (!region.matched) {
       report.discarded.regiao_desconhecida++;
       report.regionalUnconfirmed++;
