@@ -43,7 +43,7 @@ export function reserveBudgetState(state, limits, key, now) {
     ],
   };
 }
-export function createRadarStore() {
+export function getServerFirestore() {
   if (!process.env.BLITZ_FIREBASE_SERVICE_ACCOUNT) return null;
   const app =
     getApps().find((a) => a.name === "blitz-radar-store") ||
@@ -56,7 +56,11 @@ export function createRadarStore() {
       },
       "blitz-radar-store",
     );
-  const db = getFirestore(app, config.firestoreDatabaseId || "(default)");
+  return getFirestore(app, config.firestoreDatabaseId || "(default)");
+}
+export function createRadarStore() {
+  const db = getServerFirestore();
+  if (!db) return null;
   const collection = db.collection("_blitzRadarExecutions");
   return {
     async get(key) {
