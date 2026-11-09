@@ -23,7 +23,9 @@ test('public quotes qualify against private offers and write once to the ownerâ€
       update: (ref, value) => records.set(ref.path, { ...records.get(ref.path), ...value }),
     }),
   };
+  const recipients = [];
   const handler = createQuoteHandler({
+    notify: async (_db, owner) => { recipients.push(owner); },
     getDb: () => db,
     authenticate: async req => {
       if (!req.owner) throw new SearchError('Login obrigatÃ³rio.', 401);
@@ -53,6 +55,7 @@ test('public quotes qualify against private offers and write once to the ownerâ€
   assert.equal((await call(quote)).status, 200);
   const leads = [...records.entries()].filter(([path]) => path.startsWith('users/'));
   assert.equal(leads.length, 1);
+  assert.deepEqual(recipients, ['seller']);
   assert.match(leads[0][0], /^users\/seller\/contacts\/quote-/);
   assert.equal(leads[0][1].email, quote.contact);
   assert.equal((await call({ action: 'disable', id }, 'seller')).status, 200);

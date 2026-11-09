@@ -1,0 +1,9 @@
+{
+  "id": "/",
+  "name": "Blitz 360",
+  "short_name": "Blitz 360",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#09090b",
+  "theme_color": "#09090b"
+}

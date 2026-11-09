@@ -28,6 +28,34 @@ export function QuoteCatalog({ user }: { user: User }) {
   const [busy, setBusy] = useState(false);
   const refresh = () => quoteApi<{ offers: Offer[] }>({ action: 'list' }, user).then(result => setOffers(result.offers));
 
+  async function configureAlerts(enable: boolean) {
+    setBusy(true);
+    try {
+      if (!enable) {
+        await quoteApi({ action: 'push-disable' }, user);
+        setMessage('Alertas no celular desativados.');
+        return;
+      }
+      if (!('serviceWorker' in navigator) || !('PushManager' in window) || !('Notification' in window)) {
+        throw new Error('Abra o Blitz em um navegador com notificações. No iPhone, adicione o Blitz à Tela de Início e abra pelo ícone.');
+      }
+      if (await Notification.requestPermission() !== 'granted') {
+        throw new Error('Permita notificações nas configurações do navegador ou do celular.');
+      }
+      await navigator.serviceWorker.register('/quote-push.js');
+      const registration = await navigator.serviceWorker.ready;
+      const { publicKey } = await quoteApi<{ publicKey: string }>({ action: 'push-key' }, user);
+      const current = await registration.pushManager.getSubscription();
+      const subscription = current || await registration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: publicKey });
+      await quoteApi({ action: 'push-subscribe', subscription: subscription.toJSON() }, user);
+      setMessage('Este aparelho foi cadastrado para receber alertas de orçamento.');
+    } catch (error) {
+      setMessage(errorText(error));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function save(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     const form = event.currentTarget;
@@ -64,6 +92,11 @@ export function QuoteCatalog({ user }: { user: User }) {
   }}>
     <summary className="cursor-pointer font-semibold">Captação de pedidos de orçamento</summary>
     <p className="my-3 text-sm text-zinc-300">Crie um link por produto. Pedidos elegíveis chegam ao Banco de Contatos enquanto o painel está aberto.</p>
+    <div className="my-3 flex flex-wrap gap-3">
+      <button className={button} type="button" disabled={busy} onClick={() => void configureAlerts(true)}>Ativar alertas neste celular</button>
+      <button type="button" disabled={busy} onClick={() => void configureAlerts(false)}>Desativar alertas no celular</button>
+    </div>
+    <p className="my-3 text-xs text-zinc-300">Um aparelho por conta. No iPhone, abra o Blitz pelo ícone adicionado à Tela de Início.</p>
     <form key={editing?.id || 'new'} className="grid gap-3 sm:grid-cols-2" onSubmit={save}>
       <label>Produto<input className={input} name="product" required maxLength={120} defaultValue={editing?.product} /></label>
       <label>Fornecedor exibido ao comprador<input className={input} name="seller" required maxLength={100} defaultValue={editing?.seller} /></label>
@@ -130,6 +163,10 @@ export function PublicQuote() {
         <label className="block">Nome<input className={input} name="name" required maxLength={100} autoComplete="name" /></label>
         <label className="block">Cidade e UF<input className={input} name="city" required maxLength={100} placeholder="Uberlândia/MG" /></label>
         <label className="block">CEP de entrega<input className={input} name="cep" required inputMode="numeric" pattern="[0-9]{5}-?[0-9]{3}" maxLength={9} autoComplete="postal-code" /></label>
+        <label className="block">Perfil de compra (opcional)<select className={input} name="buyerType">
+          <option value="">Selecione</option><option>Pessoa física</option><option>Produtor rural</option>
+          <option>Construtora</option><option>Responsável por galpão</option><option>Outra empresa</option>
+        </select></label>
         <label className="block">Quantidade<input className={input} name="quantity" required type="number" min="1" step="1" /></label>
         <label className="block">Canal de retorno<select className={input} name="channel" value={channel} onChange={event => setChannel(event.target.value)}>
           <option value="whatsapp">WhatsApp</option><option value="phone">Telefone</option><option value="email">E-mail</option>
