@@ -22,7 +22,6 @@ import {
 } from 'lucide-react';
 import type { User } from 'firebase/auth';
 import { auth, onAuthStateChanged } from './lib/firebase';
-import {QuoteCatalog} from './components/QuoteRequests';
 import { 
   subscribeContacts, 
   updateContactInFirestore, 
@@ -99,15 +98,9 @@ export default function App() {
     setContactsLoading(true);
     setFirestoreError(null);
 
-    let previousQuoteIds: Set<string> | undefined;
     const unsubscribe = subscribeContacts(
       currentUser.uid,
       (updatedContacts) => {
-        const quoteIds = new Set(updatedContacts.map(contact => contact.id || '').filter(id => id.startsWith('quote-')));
-        if (previousQuoteIds && [...quoteIds].some(id => !previousQuoteIds!.has(id))) {
-          showToast('Novo pedido de orçamento no Banco de Contatos.');
-        }
-        previousQuoteIds = quoteIds;
         setContacts(updatedContacts);
         setContactsLoading(false);
       },
@@ -291,7 +284,6 @@ export default function App() {
           />
         ) : (
           <>
-            <QuoteCatalog user={currentUser} />
 
             {/* 1. Extraction Tool (Hero Section) */}
             <ExtractionHero

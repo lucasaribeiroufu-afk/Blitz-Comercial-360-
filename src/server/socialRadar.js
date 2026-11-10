@@ -1,3 +1,4 @@
+import { socialPlatform } from "./socialWorker.js";
 import {buyerLocation} from '../utils/searchScope.js';
 import { sourceReport, classifyRecords, finishReport } from "./radarReport.js";
 import { marketplacePlans, normalizeMarketplaceRows } from "./marketplaces.js";
@@ -112,7 +113,16 @@ export async function discoverSources(query, location, deps = {}) {
     };
   }
   const results = [];
-  for (const search of discoveryQueries(query, location).slice(
+  const queries = discoveryQueries(query, location);
+  if (deps.publicB2C) {
+    const segment = deps.publicB2C.segment ? ` "${deps.publicB2C.segment}"` : "";
+    for (const search of queries) search.q += segment;
+    queries.splice(1, 0, {
+      platform: "website",
+      q: `"${query}" ${location}${segment} ("quero comprar" OR "procuro" OR "solicito orçamento") -site:facebook.com -site:instagram.com -site:tiktok.com`,
+    });
+  }
+  for (const search of queries.slice(
     0,
     deps.paidPermit?.serperQueries || 0,
   )) {
@@ -158,8 +168,11 @@ export async function discoverSources(query, location, deps = {}) {
             };
           }
           const data = await response.json();
+          const sourceUrl = (link) => search.platform === "website"
+            ? (/^https:\/\//i.test(link || "") && !socialPlatform(link) ? link : null)
+            : platformUrl(link, search.platform);
           report.discarded.fonte_invalida = (data.organic || []).filter(
-            (item) => !platformUrl(item.link, search.platform),
+            (item) => !sourceUrl(item.link),
           ).length;
           report.received = (data.organic || []).length;
           if (Number.isFinite(data.credits))
@@ -169,7 +182,7 @@ export async function discoverSources(query, location, deps = {}) {
             sources: (data.organic || [])
               .map((item) => ({
                 platform: search.platform,
-                url: platformUrl(item.link, search.platform),
+                url: sourceUrl(item.link),
               }))
               .filter((s) => s.url),
           };
@@ -400,22 +413,24 @@ export async function startSocialRadar(body, deps = {}) {
   const discovery =
     manual.length || configured.length
       ? { sources: [], warnings: [] }
-      : await discoverSources(query, location, deps);
+      : await discoverSources(query, location, { ...deps, publicB2C: body.publicB2C });
+  await deps.collectDiscoveredWeb?.(discovery.sources.filter(s => s.platform === "website").map(s => s.url));
+  const discoveredSocial = discovery.sources.filter(s => s.platform !== "website");
   const sources = [...manual, ...configured]
     .flatMap((raw) =>
       Object.keys(actors)
         .map((platform) => ({ platform, url: platformUrl(raw, platform) }))
         .filter((s) => s.url),
     )
-    .concat(discovery.sources);
+    .concat(discoveredSocial);
   if (manual.length && !sources.length && !markets.plans.length)
     throw new SearchError(
       "Use links de grupo Facebook, post/reel Instagram ou vídeo TikTok públicos.",
       400,
     );
-  if (discovery.sources.length && deps.collectDiscovered && (!deps.deadline || Date.now() < deps.deadline-1000)) {
+  if (discoveredSocial.length && deps.collectDiscovered && (!deps.deadline || Date.now() < deps.deadline-1000)) {
     try {
-      if(await deps.collectDiscovered(discovery.sources.map(s=>s.url)))return {done:true,leads:[],meta:{warnings:discovery.warnings}};
+      if(await deps.collectDiscovered(discoveredSocial.map(s=>s.url)))return {done:true,leads:[],meta:{warnings:discovery.warnings}};
     } catch(err) {
       deps.reports?.push(sourceReport("Worker — fontes descobertas",{status:"blocked",errors:[err.message]}));
     }
@@ -693,7 +708,7 @@ export async function pollSocialRadar(body, deps = {}) {
           job.query,
           job.location,
           report,
-          { seen },
+          { seen, now: deps.now },
         );
         leads.push(...classified.leads);
         regionalUnconfirmed.push(...classified.regionalUnconfirmed);

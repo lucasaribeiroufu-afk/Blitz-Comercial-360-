@@ -64,3 +64,20 @@ test('Casa dos Dados queries exact CNPJ, not fuzzy personal identity matches',as
  const lead=await casaCnpjLookup({cnpj:'11222333000181'},{casaKey:'fixture',fetcher:async(url,opts)=>{assert.ok(url.endsWith('/11222333000181'));assert.equal(opts.headers['api-key'],'fixture');return {ok:true,json:async()=>({cnpj:'11222333000181',razao_social:'Fixture LTDA',endereco:{municipio:'Uberlândia',uf:'MG'},quadro_societario:[{nome:'Sócio Fixture',qualificacao_socio:'Sócio'}]})}}});
  assert.equal(lead.decisionMaker,'');assert.equal(lead.phone,'');assert.equal(lead.socios[0].nome,'Sócio Fixture');assert.ok(lead.evidence.cnpj.source.includes('Casa dos Dados'));
 });
+
+test('public B2C discovery searches web and social using the same product and region', async () => {
+ const { discoverSources } = await import('../src/server/socialRadar.js');
+ const queries = [];
+ const result = await discoverSources('WayAgro-Termo', 'Uberlândia MG', {
+  publicB2C: { segment: 'produtores rurais' },
+  serperKey: 'fixture',
+  paidPermit: { serperQueries: 2 },
+  fetcher: async (_url, request) => {
+   const { q } = JSON.parse(request.body);
+   queries.push(q);
+   return { ok: true, json: async () => ({ organic: [{ link: q.startsWith('site:') ? 'https://www.facebook.com/groups/12345/' : 'https://example.org/pedido' }] }) };
+  },
+ });
+ assert.deepEqual(result.sources.map(source => source.platform), ['facebook', 'website']);
+ assert.ok(queries.every(query => query.includes('Uberlândia MG') && query.includes('produtores rurais')));
+});

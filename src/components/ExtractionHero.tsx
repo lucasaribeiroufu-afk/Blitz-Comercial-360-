@@ -117,8 +117,10 @@ export function ExtractionHero({
   const [activeTab, setActiveTab] = useState<'search' | 'url'>('search');
   
   // Search state - 3 Integrated & Synchronized Consultation Pillars
-  const [searchTerm, setSearchTerm] = useState('iodo 10%');
-  const [prospectMode,setProspectMode] = useState<'evidence'|'potential'>('potential');
+  const [searchTerm, setSearchTerm] = useState('');
+  const [prospectMode,setProspectMode] = useState<'b2c'|'evidence'|'potential'>('b2c');
+  const isB2C = prospectMode === 'b2c';
+  const [buyerSegment, setBuyerSegment] = useState('');;
   const [targetSectors,setTargetSectors] = useState('fazendas leiteiras');
   const [locationTerm, setLocationTerm] = useState('Brasil');
   const [searchObjective, setSearchObjective] = useState('Possíveis compradores de iodo 10% no Brasil; hipótese por segmento, com contatos comerciais publicados');
@@ -278,6 +280,7 @@ export function ExtractionHero({
   ];
 
   const handleClearSearch = () => {
+    setBuyerSegment('');
     setSearchTerm('');
     setLocationTerm('');
     setSearchObjective('');
@@ -330,10 +333,10 @@ export function ExtractionHero({
 
       // 🔀 ROTEAMENTO: B2C (Radar de Intenção de Compra) vs B2B (Empresas & Decisores)
       let response;
-      if (prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType)) {
+      if (isB2C || (prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType))) {
         setLoadingStatus(`🎯 Rastreando menções públicas de pessoas buscando comprar "${effectiveTerm}"...`);
         await new Promise((r) => setTimeout(r, 150));
-        response = await searchB2CLeads(effectiveTerm, buyerLocation(effectiveLoc), leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
+        response = await searchB2CLeads(effectiveTerm, buyerLocation(effectiveLoc), leadCount, socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution, isB2C ? { segment: buyerSegment.trim() } : undefined);
       } else {
         setLoadingStatus('Extraindo contatos diretos (PF & PJ), intenção de busca e localização...');
         response = await searchGoogleLeads(
@@ -347,7 +350,7 @@ export function ExtractionHero({
           [],
           targetEntityType,
           'cluster',
-          freshSeed, prospectMode, targetSectors.split(',').map(s=>s.trim()).filter(Boolean)
+          freshSeed, isB2C ? 'evidence' : prospectMode, targetSectors.split(',').map(s=>s.trim()).filter(Boolean)
         );
       }
 
@@ -443,8 +446,8 @@ export function ExtractionHero({
     try {
       // Para B2C, prioriza fontes pendentes explicitamente retornadas pelo worker.
       let response;
-      if (prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType)) {
-        response = await searchB2CLeads(effectiveTerm, buyerLocation(locationTerm), leadCount, pendingSocialSources.length ? pendingSocialSources.map(s=>s.url) : socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution);
+      if (isB2C || (prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType))) {
+        response = await searchB2CLeads(effectiveTerm, buyerLocation(locationTerm), leadCount, pendingSocialSources.length ? pendingSocialSources.map(s=>s.url) : socialSourceUrls, setLoadingStatus, includeMarketplaces, updateExecution, isB2C ? { segment: buyerSegment.trim() } : undefined);
       } else {
         response = await searchGoogleLeads(
           effectiveTerm,
@@ -457,7 +460,7 @@ export function ExtractionHero({
           harvestedNames,
           targetEntityType,
           'cluster',
-          Date.now(), prospectMode, targetSectors.split(',').map(s=>s.trim()).filter(Boolean)
+          Date.now(), isB2C ? 'evidence' : prospectMode, targetSectors.split(',').map(s=>s.trim()).filter(Boolean)
         );
       }
 
@@ -790,7 +793,7 @@ export function ExtractionHero({
               }`}
             >
               <Search className="h-4 w-4" />
-              <span>Busca de Empresas, Postos & Decisores</span>
+              <span>Busca de clientes</span>
             </button>
 
             <button
@@ -818,10 +821,16 @@ export function ExtractionHero({
               
               <div className="space-y-2">
                 <label className="block text-xs text-zinc-300" htmlFor="prospecting-mode">Objetivo da pesquisa</label>
-                <select id="prospecting-mode" value={prospectMode} onChange={e=>{setProspectMode(e.target.value as 'evidence'|'potential');handleClearResults();}} className="w-full rounded-lg bg-zinc-900 border border-zinc-700 p-2 text-sm text-white">
+                <select id="prospecting-mode" value={prospectMode} onChange={e=>{setProspectMode(e.target.value as 'b2c'|'evidence'|'potential');handleClearResults();}} className="w-full rounded-lg bg-zinc-900 border border-zinc-700 p-2 text-sm text-white">
+                  <option value="b2c">Radar B2C — pedidos públicos de compra</option>
                   <option value="potential">Possíveis compradores — empresas por segmento</option>
                   <option value="evidence">Intenção de compra publicada / busca de estabelecimentos</option>
                 </select>
+                {isB2C && <>
+                  <label htmlFor="b2c-segment" className="block text-xs text-zinc-300">Segmento do comprador (opcional)</label>
+                  <input id="b2c-segment" value={buyerSegment} onChange={e => setBuyerSegment(e.target.value)} maxLength={80} disabled={isLoading || isLoadingMore} className="w-full rounded-lg border border-zinc-700 bg-zinc-900 p-2 text-sm text-white" placeholder="Ex.: produtores rurais" />
+                  <p className="text-xs text-zinc-400">A busca usa o produto e a região para localizar pedidos públicos na web e nas redes sociais. O segmento orienta a descoberta.</p>
+                </>}
                 {prospectMode === 'potential' && <>
                   <label htmlFor="prospect-sectors" className="block text-xs text-zinc-300">Segmentos que deseja prospectar (até dois, separados por vírgula)</label>
                   <input id="prospect-sectors" value={targetSectors} onChange={e=>setTargetSectors(e.target.value)} className="w-full rounded-lg bg-zinc-900 border border-zinc-700 p-2 text-sm text-white" placeholder="Ex.: fazendas leiteiras" />
@@ -898,13 +907,13 @@ export function ExtractionHero({
                     <Search className="h-5 w-5 text-indigo-400 shrink-0 mr-2.5" />
                     <div className="w-full">
                       <label htmlFor="search-term-input" className="block text-[10px] uppercase font-bold text-zinc-400 tracking-wider">
-                        1. O que você quer buscar?
+                        {isB2C ? '1. Produto para venda' : '1. O que você quer buscar?'}
                       </label>
                       <input
                         id="search-term-input"
                         type="text"
                         placeholder={
-                          targetEntityType === 'pf'
+                          (isB2C || targetEntityType === 'pf')
                             ? 'Ex: caminhonete usada, balança para gado, tênis de corrida...'
                             : 'Ex: Posto de combustível, Supermercado...'
                         }
@@ -1092,8 +1101,8 @@ export function ExtractionHero({
 
             </div>
 
-            {prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType) && <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
-              <label htmlFor="social-source-links" className="text-xs text-zinc-300">Origens públicas opcionais: grupos, posts/reels, vídeos e anúncios de marketplaces</label>
+            {(isB2C || (prospectMode === 'evidence' && isBuyerSearch(searchTerm, targetEntityType))) && <div className="rounded-xl border border-zinc-800 bg-zinc-900 p-3">
+              <label htmlFor="social-source-links" className="text-xs text-zinc-300">Origens públicas opcionais: páginas, grupos, posts, reels e vídeos</label>
               <textarea id="social-source-links" value={socialSourceLinks} onChange={e=>setSocialSourceLinks(e.target.value)} disabled={isLoading || isLoadingMore} rows={2} placeholder="Cole links públicos, separados por espaço. Em branco: descoberta por produto e região." className="mt-2 w-full rounded bg-zinc-950 p-2 text-xs text-zinc-200" />
               <label className="mt-2 flex gap-2 text-xs text-zinc-300"><input type="checkbox" checked={includeMarketplaces} onChange={e=>setIncludeMarketplaces(e.target.checked)} disabled={isLoading || isLoadingMore}/>Analisar também produtos da Shopee e perguntas públicas do Mercado Livre</label>
               <p className="mt-1 text-xs text-zinc-500">O perfil do autor é o canal de contato quando ele não publica telefone. Grupo local não comprova residência.</p>
@@ -1114,6 +1123,7 @@ export function ExtractionHero({
                     key={idx}
                     type="button"
                     onClick={() => {
+                      setProspectMode('potential');
                       setSearchTerm(preset.term);
                       setLocationTerm(preset.loc);
                       setSearchObjective(preset.objective);
@@ -1295,7 +1305,7 @@ export function ExtractionHero({
                 </div>
                 {(searchTerm || locationTerm) && (
                   <p className="text-xs text-zinc-400 mt-0.5">
-                    Filtro: <strong className="text-zinc-200">{searchTerm || 'Geral'}</strong> {locationTerm ? <>em <strong className="text-emerald-300">{locationTerm}</strong></> : ''} • {prospectMode === 'potential' ? <span className="text-amber-300">Empresas potenciais — demanda não comprovada</span> : isBuyerSearch(searchTerm, targetEntityType) ? <span className="text-purple-300 font-medium">Radar de intenção de compra</span> : <span className="text-amber-300 font-medium">Gerente de Compras & Suprimentos</span>}
+                    Filtro: <strong className="text-zinc-200">{searchTerm || 'Geral'}</strong> {locationTerm ? <>em <strong className="text-emerald-300">{locationTerm}</strong></> : ''} • {prospectMode === 'potential' ? <span className="text-amber-300">Empresas potenciais — demanda não comprovada</span> : (isB2C || isBuyerSearch(searchTerm, targetEntityType)) ? <span className="text-purple-300 font-medium">Radar de intenção de compra</span> : <span className="text-amber-300 font-medium">Gerente de Compras & Suprimentos</span>}
                   </p>
                 )}
               </div>

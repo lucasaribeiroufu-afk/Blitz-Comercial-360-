@@ -13,7 +13,7 @@ test('worker connection uses server token, stops redirects and removes cross-pla
 test('worker precedes paid sources, classifies sellers/region and preserves collection evidence',async()=>{
  const body={query:'tinta',location:'Paracatu MG',count:1,sourceUrls:[url]};
  const result=await startBuyerRadar(body,{userId:'worker-fixture',now:Date.parse('2026-10-14T12:00:00Z'),collectWorker:async()=>({records:[record,{...record,name:'seller',authorUrl:'https://www.instagram.com/seller/',text:'Vendo tinta'},{...record,name:'unknown',authorUrl:'https://www.instagram.com/unknown/',text:'Quero comprar tinta'}],reports:[{source:'Worker instagram',platform:'instagram',url,consulted:true,status:'limited',received:3,pages:2,errors:[],limits:['Paginação limitada']}],pending:[]}),fetcher:()=>assert.fail('paid APIs not needed')});
- assert.equal(result.leads.length,1);assert.equal(result.regionalUnconfirmed.length,1);assert.equal(result.meta.executionReport.sources[0].discarded.vendedor,1);assert.equal(result.meta.executionReport.state,'partial'); // bounded DOM does not certify full coverage
+ assert.equal(result.leads.length,1);assert.equal(result.regionalUnconfirmed.length,1);assert.equal(result.meta.executionReport.sources.find(source=>source.source==='Worker instagram').discarded.vendedor,1);assert.equal(result.meta.executionReport.state,'partial'); // bounded DOM does not certify full coverage
  assert.equal(result.leads[0].evidence.intent.source,record.collector);assert.equal(result.leads[0].evidence.intent.retrievedAt,record.retrievedAt);assert.equal(result.leads[0].phone,'');
 });
 test('deduplication keeps separate platform identities and matches worker/paid IDs for same evidence',()=>{

@@ -195,7 +195,7 @@ test("public feeds/JSON-LD preserve author boundaries; anonymous HTML never fabr
   );
   const r = sourceReport("x");
   assert.equal(
-    classifyRecords(records, "website", "ração", "Paracatu MG", r, { now })
+    classifyRecords(records.map(record => ({ ...record, publishedAt: "2026-10-12" })), "website", "ração", "Paracatu MG", r, { now })
       .leads.length,
     0,
   );
@@ -257,6 +257,7 @@ test("multiple URLs on one platform use queue, persistent dedup and report actua
           {
             text: "Quero comprar ração. Moro em Paracatu MG",
             ownerUsername: "source_author",
+            timestamp: new Date(now - 86400000).toISOString(),
             id: url.includes("/a/") ? "1" : "2",
           },
         ];
@@ -382,7 +383,7 @@ test("free source cache preserves original collection time in field evidence and
     assert.equal(a.leads.length, 1);
     assert.equal(pages, 2);
     assert.equal(calls, 0);
-    assert.equal(b.meta.executionReport.sources[0].cacheHit, true);
+    assert.equal(b.meta.executionReport.sources.find(source => source.url === body.sourceUrls[0]).cacheHit, true);
     assert.equal(
       b.leads[0].evidence.name.retrievedAt,
       a.leads[0].evidence.name.retrievedAt,

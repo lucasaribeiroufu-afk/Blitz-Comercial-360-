@@ -110,6 +110,9 @@ export async function startBuyerRadar(body, deps = {}) {
       "Informe produto, Brasil ou Cidade - UF e quantidade de 1 a 100.",
       400,
     );
+  const publicB2C = body.publicB2C == null ? null : {
+    segment: String(body.publicB2C.segment || "").replace(/[^\p{L}\p{N} -]/gu, " ").trim().slice(0, 80),
+  };
   const manual = body.sourceUrls ?? [];
   if (
     !Array.isArray(manual) ||
@@ -127,6 +130,7 @@ export async function startBuyerRadar(body, deps = {}) {
   ];
   const key = radarKey({
     version: 3,
+    publicB2C,
     userId: deps.userId || "",
     query: normalize(query),
     location: normalize(location),
@@ -138,7 +142,7 @@ export async function startBuyerRadar(body, deps = {}) {
   });
   if (inflight.has(key)) return inflight.get(key);
   const promise = execute(
-    { ...body, query, location, count, sourceUrls: urls },
+    { ...body, query, location, count, publicB2C, sourceUrls: urls },
     key,
     deps,
   );
@@ -191,19 +195,21 @@ async function execute(body, key, deps) {
       }),
     );
   }
-  const pncpReport = sourceReport("PNCP — propostas abertas", { kind: "content", consulted: true });
-  sources.push(pncpReport);
-  try {
-    const procurement = await (deps.collectPncp || collectPncp)(body, { now, transport: deps.pncpTransport });
-    pncpReport.received = procurement.received;
-    pncpReport.qualified = procurement.leads.length;
-    pncpReport.status = procurement.failures && !procurement.received ? "blocked" : "limited";
-    pncpReport.limits.push("Amostra: primeira página de três modalidades e até oito editais candidatos.");
-    if (procurement.failures) pncpReport.errors.push("Parte das consultas ao PNCP falhou.");
-    leads.push(...procurement.leads.slice(0, body.count));
-  } catch {
-    pncpReport.status = "blocked";
-    pncpReport.errors.push("Consulta ao PNCP indisponível.");
+  if (!body.publicB2C) {
+    const pncpReport = sourceReport("PNCP — propostas abertas", { kind: "content", consulted: true });
+    sources.push(pncpReport);
+    try {
+      const procurement = await (deps.collectPncp || collectPncp)(body, { now, transport: deps.pncpTransport });
+      pncpReport.received = procurement.received;
+      pncpReport.qualified = procurement.leads.length;
+      pncpReport.status = procurement.failures && !procurement.received ? "blocked" : "limited";
+      pncpReport.limits.push("Amostra: primeira página de três modalidades e até oito editais candidatos.");
+      if (procurement.failures) pncpReport.errors.push("Parte das consultas ao PNCP falhou.");
+      leads.push(...procurement.leads.slice(0, body.count));
+    } catch {
+      pncpReport.status = "blocked";
+      pncpReport.errors.push("Consulta ao PNCP indisponível.");
+    }
   }
   let pendingSources = [];
   const socialUrls = body.sourceUrls.filter(socialPlatform);
@@ -229,7 +235,7 @@ async function execute(body, key, deps) {
   // Generic HTTP is for non-social feeds; social URLs use their own public DOM adapters.
   const publicUrls = body.sourceUrls.filter(url => !socialPlatform(url));
   const readLimit = 2;
-  for (const url of publicUrls.slice(0, readLimit)) {
+  async function consumePublicUrl(url) {
     const report = sourceReport("Página/feed público", { url });
     sources.push(report);
     const cacheKey = radarKey({ userId: deps.userId || "", url }),
@@ -273,6 +279,7 @@ async function execute(body, key, deps) {
       );
     }
   }
+  for (const url of publicUrls.slice(0, readLimit)) await consumePublicUrl(url);
   if (publicUrls.length > readLimit)
     sources.push(
       sourceReport("Páginas adicionais", {
@@ -407,11 +414,16 @@ async function execute(body, key, deps) {
   }
   try {
     const paid = await startSocialRadar(
-      { ...body, sourceUrls: body.sourceUrls.slice(0, 9) },
+      { ...body, sourceUrls: (body.publicB2C ? socialUrls : body.sourceUrls).slice(0, 9) },
       {
         ...deps,
         deadline,
         paidPermit: limits,
+        collectDiscoveredWeb: async (urls) => {
+          for (const url of [...new Set(urls)].slice(0, Math.max(0, readLimit - publicUrls.length))) {
+            await consumePublicUrl(url);
+          }
+        },
         collectDiscovered: async(urls) => {
           const worker = await (deps.collectWorker || collectSocialWorker)({...body,sourceUrls:urls}, {...deps,deadline});
           consumeWorker(worker);

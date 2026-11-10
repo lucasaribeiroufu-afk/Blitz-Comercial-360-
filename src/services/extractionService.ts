@@ -19,8 +19,8 @@ export async function extractFromDirectUrl(rawUrl: string, config?: ExtractionAp
  const data=await request('/api/extract-url',{url:normalizeUrl(rawUrl)});
  return data.lead;
 }
-export async function searchB2CLeads(query: string, location: string, count=30, sourceUrls: string[]=[], onProgress?: (message:string)=>void, includeMarketplaces=false, onExecution?: (report:ExecutionReport,unconfirmed:ExtractedResult[])=>void): Promise<DeepSearchResult> {
- let data=await request('/api/b2c-multifactor-search',{query,location,count,sourceUrls,includeMarketplaces});
+export async function searchB2CLeads(query: string, location: string, count=30, sourceUrls: string[]=[], onProgress?: (message:string)=>void, includeMarketplaces=false, onExecution?: (report:ExecutionReport,unconfirmed:ExtractedResult[])=>void, publicB2C?: {segment:string}): Promise<DeepSearchResult> {
+ let data=await request('/api/b2c-multifactor-search',{query,location,count,sourceUrls,includeMarketplaces,publicB2C});
  onExecution?.(data.meta?.executionReport,data.regionalUnconfirmed||[]);
  if(!data.job)return data;
  for(let attempt=0;attempt<45&&!data.done;attempt++) {

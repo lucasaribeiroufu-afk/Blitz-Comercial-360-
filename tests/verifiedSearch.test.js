@@ -23,7 +23,7 @@ test('empty, quantity, exclusions and pagination are honest',async()=>{
 });
 test('legacy B2C entrypoint honors economic gate and never uses search snippets as buyer records',async()=>{
  let calls=0;
- const result=await searchBuyers({query:'geladeira',location:'Uberlândia MG'}, {limits:{enabled:false},serperKey:'fixture',fetcher:async()=>{calls++;return response({organic:[{link:'https://example.com',snippet:'Quero comprar geladeira'}]});}});
+ const result=await searchBuyers({query:'geladeira',location:'Uberlândia MG'}, {collectPncp:async()=>({received:0,leads:[],failures:1}),limits:{enabled:false},serperKey:'fixture',fetcher:async()=>{calls++;return response({organic:[{link:'https://example.com',snippet:'Quero comprar geladeira'}]});}});
  assert.equal(calls,0);assert.equal(result.leads.length,0);assert.equal(result.meta.executionReport.state,'unavailable');assert.match(result.meta.summary,/não comprova ausência/);
  assert.equal(buyerExcerpt('Quero comprar geladeira em Uberaba','geladeira','Uberlândia'),'');
 });
