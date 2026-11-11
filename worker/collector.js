@@ -1,4 +1,3 @@
-import {chromium} from 'playwright-core';
 import robotsParser from 'robots-parser';
 import {createHash} from 'node:crypto';
 import {hosts,socialSource,publication,publicAuthor} from './urls.js';
@@ -38,7 +37,8 @@ export async function collectBatch(body) {
   const queue=[...new Map(sources.map(s=>{const source=socialSource(s);return [source.url,source];})).values()];
   const reports=[],records=[],pending=[],seen=new Set();
   if(!queue.length)return {records,reports:[{source:'Descoberta gratuita',status:'blocked',consulted:false,errors:['Nenhuma fonte pública no catálogo para nicho + cidade. Informe URLs ou configure descoberta Serper dentro do orçamento.'],limits:[]}],pending,done:true};
-  const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true,timeout:Math.max(1,deadline-Date.now()),proxy:proxyOptions(),args:['--disable-dev-shm-usage']});
+  const {launchBrowser}=await import('./browser.js');
+  const browser=await launchBrowser({timeout:Math.max(1,deadline-Date.now()),proxy:proxyOptions()});
   try {
     while(queue.length && reports.length<maxSources && records.length<maxRecords) {
       if(Date.now()>=deadline)break;

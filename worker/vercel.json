@@ -1,0 +1,15 @@
+{
+  "framework": null,
+  "buildCommand": "npm run build",
+  "outputDirectory": "public",
+  "functions": {
+    "api/index.js": {
+      "maxDuration": 60,
+      "includeFiles": "node_modules/@sparticuz/chromium/bin/**"
+    }
+  },
+  "rewrites": [
+    {"source": "/health", "destination": "/api"},
+    {"source": "/collect", "destination": "/api"}
+  ]
+}

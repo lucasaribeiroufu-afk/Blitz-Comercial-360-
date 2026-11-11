@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import {chromium} from 'playwright-core';
+import {launchBrowser} from '../browser.js';
 import {socialSource,publication,publicAuthor} from '../urls.js';
 import {extractVisible} from '../extract.js';
 import {gate} from '../collector.js';
@@ -19,7 +19,7 @@ test('login, CAPTCHA and private group gates stop extraction',()=>{
  for(const snapshot of [{password:true},{challenge:true},{title:'Private group'},{body:'Faça login para continuar'}])assert.throws(()=>gate({title:'',body:'',...snapshot},'https://www.facebook.com/store/'));
 });
 test('real Chromium runtime parses separate public DOM fixtures for each platform',async()=>{
- const browser=await chromium.launch({executablePath:process.env.CHROMIUM_PATH||'/usr/bin/chromium',headless:true});
+ const browser=await launchBrowser();
  try {
   const page=await browser.newPage();
   const fixtures=[
