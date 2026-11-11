@@ -1,3 +1,4 @@
+import { ProspectingProjects } from './ProspectingProjects';
 import {isBuyerSearch, buyerLocation} from '../utils/searchScope.js';
 import {RadarExecutionReport} from './RadarExecutionReport';
 import type {ExecutionReport} from '../types';
@@ -120,10 +121,10 @@ export function ExtractionHero({
   const [searchTerm, setSearchTerm] = useState('');
   const [prospectMode,setProspectMode] = useState<'b2c'|'evidence'|'potential'>('b2c');
   const isB2C = prospectMode === 'b2c';
-  const [buyerSegment, setBuyerSegment] = useState('');;
+  const [buyerSegment, setBuyerSegment] = useState('');
   const [targetSectors,setTargetSectors] = useState('fazendas leiteiras');
   const [locationTerm, setLocationTerm] = useState('Brasil');
-  const [searchObjective, setSearchObjective] = useState('Possíveis compradores de iodo 10% no Brasil; hipótese por segmento, com contatos comerciais publicados');
+  const [searchObjective, setSearchObjective] = useState('');
   const [isObjectiveCustom, setIsObjectiveCustom] = useState(false);
   const [includeMarketplaces,setIncludeMarketplaces]=useState(true);
   const searchLock=useRef(false);
@@ -817,6 +818,28 @@ export function ExtractionHero({
         {/* Tab 1: Google Search by Term + Location */}
         {activeTab === 'search' && (
           <form onSubmit={handleSearchGoogle} className="space-y-4">
+            <ProspectingProjects userId={userId} busy={isLoading || isLoadingMore}
+              setup={{ product: searchTerm, location: locationTerm, mode: prospectMode,
+                segment: buyerSegment, sectors: targetSectors, audience: targetEntityType, count: leadCount,
+                objective: searchObjective, objectiveCustom: isObjectiveCustom,
+                sourceLinks: socialSourceLinks, marketplaces: includeMarketplaces }}
+              onLoad={setup => {
+                handleClearResults();
+                setRadarReport(undefined);
+                setRegionalUnconfirmed([]);
+                setSearchTerm(setup.product);
+                setLocationTerm(setup.location);
+                setProspectMode(setup.mode);
+                setBuyerSegment(setup.segment);
+                setTargetSectors(setup.sectors);
+                setTargetEntityType(setup.audience);
+                setLeadCount(setup.count);
+                setSearchObjective(setup.objective);
+                setIsObjectiveCustom(setup.objectiveCustom);
+                setSocialSourceLinks(setup.sourceLinks);
+                setIncludeMarketplaces(setup.marketplaces);
+              }} />
+
             <div className="rounded-2xl border border-zinc-700/80 bg-zinc-950/90 p-4 sm:p-5 shadow-2xl ring-1 ring-white/5 space-y-4">
               
               <div className="space-y-2">
