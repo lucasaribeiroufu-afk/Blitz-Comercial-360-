@@ -1,4 +1,5 @@
 import { ProspectingProjects } from './ProspectingProjects';
+import { MarketTrends } from './MarketTrends';
 import {isBuyerSearch, buyerLocation} from '../utils/searchScope.js';
 import {RadarExecutionReport} from './RadarExecutionReport';
 import type {ExecutionReport} from '../types';
@@ -839,6 +840,8 @@ export function ExtractionHero({
                 setSocialSourceLinks(setup.sourceLinks);
                 setIncludeMarketplaces(setup.marketplaces);
               }} />
+
+            <MarketTrends product={searchTerm} />
 
             <div className="rounded-2xl border border-zinc-700/80 bg-zinc-950/90 p-4 sm:p-5 shadow-2xl ring-1 ring-white/5 space-y-4">
               
