@@ -42,6 +42,8 @@ test('job signatures stop arbitrary dataset enumeration and expire',()=>{
  assert.throws(()=>verifyJob(issueJob({expiresAt:0},'fixture-secret'),'fixture-secret'),/expirada/);
 });
 test('Apify job starts asynchronously with bounded actor input and polls a simulated dataset',async()=>{
+ // Keep publication freshness independent of the calendar date running the test.
+ const now=Date.parse('2026-10-13T12:00:00Z');
  const fetcher=async(url,opts)=>{
   if(url.includes('/acts/')&&!url.includes('/runs?'))return {ok:true,json:async()=>({data:{pricingInfos:[{pricingModel:'PAY_PER_EVENT'}]}})};
   if(url.includes('/runs?')) {const input=JSON.parse(opts.body);assert.equal(input.directUrls[0],record.sourceUrl);assert.ok(input.resultsLimit<=100);assert.equal(opts.headers.Authorization,'Bearer fixture-secret');assert.ok(!url.includes('fixture-secret'));return {ok:true,json:async()=>({data:{id:'fixture-run'}})};}
@@ -51,7 +53,10 @@ test('Apify job starts asynchronously with bounded actor input and polls a simul
  };
  const start=await startSocialRadar({query:'pessoa querendo comprar tinta impermeabilizante',location:'Uberlândia-MG',count:5,sourceUrls:[record.sourceUrl]},{paidPermit:{actorUsd:0.1,maxActors:5,serperQueries:2},apifyToken:'fixture-secret',fetcher});
  assert.equal(start.done,false);assert.equal(start.leads.length,0);
- const poll=await pollSocialRadar({job:start.job},{paidPermit:{actorUsd:0.1,maxActors:5,serperQueries:2},apifyToken:'fixture-secret',fetcher});assert.equal(poll.done,true);assert.equal(poll.leads.length,1);assert.equal(poll.leads[0].name,'fixture_user');
+ const poll=await pollSocialRadar({job:start.job},{paidPermit:{actorUsd:0.1,maxActors:5,serperQueries:2},apifyToken:'fixture-secret',fetcher,now});assert.equal(poll.done,true);assert.equal(poll.leads.length,1);assert.equal(poll.leads[0].name,'fixture_user');
+ const stale=await pollSocialRadar({job:start.job},{apifyToken:'fixture-secret',fetcher,now:now+366*86400000});
+ assert.equal(stale.done,true);assert.equal(stale.leads.length,0);
+ assert.equal(stale.meta.executionReport.sources[0].discarded.data,1);
 });
 test('invalid source URLs, absent credentials and failed Actors never create leads',async()=>{
  assert.equal(platformUrl('https://instagram.com.evil.test/p/abc/','instagram'),'');
