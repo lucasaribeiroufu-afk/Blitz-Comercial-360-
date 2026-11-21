@@ -62,7 +62,7 @@ export function FirestoreDatabasePage({
     try {
       await onBatchDeleteContacts(auditSummary.unverifiedIds);
       setShowConfirmDeleteModal(false);
-      onShowToast(`Auditoria concluída! ${auditSummary.unverifiedIds.length} contatos sem veracidade foram excluídos do Firestore.`, 'success');
+      onShowToast(`Auditoria concluída! ${auditSummary.unverifiedIds.length} contatos sem fonte foram excluídos do Firestore.`, 'success');
     } catch (err: any) {
       console.error(err);
       onShowToast(`Erro ao excluir contatos: ${err.message || 'Tente novamente.'}`, 'error');
@@ -97,7 +97,7 @@ export function FirestoreDatabasePage({
               <span>Total no Banco Salvos no Firestore</span>
             </h1>
             <p className="text-xs text-zinc-400 mt-0.5">
-              Base permanente com comprovação de existência pública (Cartórios, Juntas Comerciais, Receita Federal e Sintegra).
+              Registros da sua conta, com as fontes disponíveis para revisão.
             </p>
           </div>
         </div>
@@ -133,16 +133,16 @@ export function FirestoreDatabasePage({
         {/* Card 2: Contatos com Veracidade Comprovada */}
         <div className="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-4 backdrop-blur-sm">
           <div className="flex items-center justify-between text-xs text-emerald-400 mb-1">
-            <span className="font-semibold">Comprovados & Reais</span>
+            <span className="font-semibold">Com fonte registrada</span>
             <ShieldCheck className="h-4 w-4 text-emerald-400" />
           </div>
           <div className="text-2xl font-extrabold text-emerald-300">
             {auditSummary.realCount}
           </div>
-          <p className="text-[11px] text-emerald-500 mt-1">Telefone ativo + existência verificada</p>
+          <p className="text-[11px] text-emerald-500 mt-1">Proveniência registrada na coleta</p>
         </div>
 
-        {/* Card 3: Sem Veracidade / Fictícios */}
+        {/* Card 3: Sem fonte registrada */}
         <div className={`rounded-xl border p-4 backdrop-blur-sm ${
           auditSummary.unverifiedCount > 0 
             ? 'border-amber-500/40 bg-amber-950/20' 
@@ -150,14 +150,14 @@ export function FirestoreDatabasePage({
         }`}>
           <div className="flex items-center justify-between text-xs mb-1">
             <span className={auditSummary.unverifiedCount > 0 ? 'text-amber-400 font-semibold' : 'text-zinc-400'}>
-              Sem Veracidade / Fictícios
+              Sem fonte registrada
             </span>
             <AlertTriangle className={`h-4 w-4 ${auditSummary.unverifiedCount > 0 ? 'text-amber-400' : 'text-zinc-500'}`} />
           </div>
           <div className={`text-2xl font-extrabold ${auditSummary.unverifiedCount > 0 ? 'text-amber-400' : 'text-zinc-400'}`}>
             {auditSummary.unverifiedCount}
           </div>
-          <p className="text-[11px] text-zinc-500 mt-1">Telefones inválidos ou sem registro</p>
+          <p className="text-[11px] text-zinc-500 mt-1">Revisão de proveniência pendente</p>
         </div>
 
       </div>
@@ -171,10 +171,10 @@ export function FirestoreDatabasePage({
             </div>
             <div>
               <h3 className="text-sm font-bold text-amber-300">
-                Revisão da Base: {auditSummary.unverifiedCount} contatos sem veracidade detectados
+                Revisão da Base: {auditSummary.unverifiedCount} contatos sem fonte registrada
               </h3>
               <p className="text-xs text-zinc-300 mt-0.5 leading-relaxed max-w-2xl">
-                Identificamos números de telefone fictícios, formatos com DDD inexistente ou registros sem comprovação pública. Deseja apagá-los do Firestore para manter apenas os contatos 100% reais?
+                Estes registros precisam de revisão porque não possuem proveniência de coleta. Confira os dados antes de decidir pela exclusão.
               </p>
             </div>
           </div>
@@ -187,7 +187,7 @@ export function FirestoreDatabasePage({
               className="flex items-center gap-2 rounded-xl bg-rose-600 hover:bg-rose-500 px-4 py-2.5 text-xs font-bold text-white shadow-lg shadow-rose-600/30 transition cursor-pointer disabled:opacity-50"
             >
               <Trash2 className="h-4 w-4" />
-              <span>Apagar {auditSummary.unverifiedCount} Contatos Sem Veracidade</span>
+              <span>Apagar {auditSummary.unverifiedCount} Contatos Sem Fonte</span>
             </button>
           </div>
         </div>
@@ -205,7 +205,7 @@ export function FirestoreDatabasePage({
             />
             <span className="flex items-center gap-1.5">
               <ShieldCheck className="h-4 w-4 text-emerald-400" />
-              <span>Exibir apenas contatos reais e comprovados de existência ({auditSummary.realCount})</span>
+              <span>Exibir apenas registros com fonte ({auditSummary.realCount})</span>
             </span>
           </label>
         </div>
@@ -235,11 +235,11 @@ export function FirestoreDatabasePage({
             </div>
 
             <p className="text-xs text-zinc-300 leading-relaxed">
-              Você está prestes a excluir definitivamente <strong>{auditSummary.unverifiedCount} contatos</strong> que não possuem veracidade comprovada (telefones inválidos ou fictícios) do seu banco no Cloud Firestore.
+              Você está prestes a excluir definitivamente <strong>{auditSummary.unverifiedCount} contatos</strong> que não possuem fonte de coleta registrada do seu banco no Cloud Firestore.
             </p>
 
             <p className="text-xs text-emerald-400 bg-emerald-950/30 border border-emerald-500/20 p-2.5 rounded-lg">
-              Os <strong>{auditSummary.realCount} contatos reais</strong> serão mantidos e preservados com segurança.
+              Os <strong>{auditSummary.realCount} registros com fonte</strong> serão mantidos e preservados com segurança.
             </p>
 
             <div className="flex items-center justify-end gap-2 pt-2">

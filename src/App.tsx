@@ -331,7 +331,7 @@ export default function App() {
                   <span>Salvos no Firestore</span>
                   <span className="text-[10px] text-emerald-400 font-medium flex items-center gap-1">
                     <ShieldCheck className="h-3 w-3 text-emerald-400 inline" />
-                    {auditSummary.realCount} Verificados
+                    {auditSummary.realCount} com fonte
                   </span>
                 </p>
               </div>
@@ -406,7 +406,7 @@ export default function App() {
                   <span>Base Completa de Contatos Salvos no Firestore ({totalContacts})</span>
                 </h3>
                 <p className="text-xs text-zinc-400 max-w-2xl">
-                  Após fazer seus levantamentos e disparar propostas de venda, você pode limpar a tela acima com segurança. Todos os seus contatos reais e comprovados de existência ficam armazenados de forma privada no Cloud Firestore.
+                  Após fazer seus levantamentos e disparar propostas de venda, você pode limpar a tela acima com segurança. Os registros salvos permanecem na sua conta, com as fontes disponíveis para revisão.
                 </p>
               </div>
               <div className="flex items-center gap-2.5 shrink-0">

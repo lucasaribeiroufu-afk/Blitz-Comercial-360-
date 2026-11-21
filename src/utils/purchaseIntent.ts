@@ -1,52 +1,12 @@
-/**
- * Utility to detect clear purchase intent and procurement needs in contact observation / notes.
- */
+import type { Provenance } from '../types';
 
-export function hasPurchaseIntent(notes?: string): boolean {
-  if (!notes || typeof notes !== 'string') return false;
-
-  const normalized = notes
-    .toLowerCase()
-    .normalize('NFD')
-    .replace(/[\u0300-\u036f]/g, '');
-
-  const intentKeywords = [
-    'compra',
-    'comprar',
-    'comprador',
-    'compradora',
-    'compradores',
-    'aquisicao',
-    'aquisicoes',
-    'suprimento',
-    'suprimentos',
-    'cotacao',
-    'cotacoes',
-    'insumo',
-    'insumos',
-    'necessidade',
-    'urgente',
-    'urgencia',
-    'demanda',
-    'procura',
-    'procurado',
-    'procurados',
-    'buscando',
-    'safra',
-    'pedido',
-    'fornecimento',
-    'fornecedor',
-    'licitacao',
-    'licitacoes',
-    'clarificante',
-    'reposicao',
-    'objetivo',
-    'intencao',
-    'alerta',
-    'precisando',
-    'interesse',
-    'orcamento',
-  ];
-
-  return intentKeywords.some((keyword) => normalized.includes(keyword));
+/** Notes and search objectives cannot establish published purchasing intent. */
+export function hasPurchaseIntent(contact?: Provenance | string): boolean {
+  if (!contact || typeof contact === 'string' || contact.recordType !== 'purchase_mention') return false;
+  const evidence = contact.evidence?.intent;
+  return Boolean(contact.intent && contact.matchedProduct && contact.publishedAt
+    && Number.isFinite(Date.parse(contact.publishedAt))
+    && evidence && evidence.value === contact.intent && evidence.excerpt
+    && /^https:\/\//.test(evidence.sourceUrl)
+    && Number.isFinite(Date.parse(evidence.retrievedAt)));
 }

@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { withEditedEvidence } from '../utils/contactEdits';
 import { X, Save, User, MapPin, UserCheck, Briefcase, Sparkles, Flame, FileText, Mail, DollarSign, Clock, Building2, Users, Instagram, Check } from 'lucide-react';
 import type { Contact, ContactStatus, EntityType } from '../types';
 import { hasPurchaseIntent } from '../utils/purchaseIntent';
@@ -83,27 +84,26 @@ export function EditContactModal({
       .filter((item) => item.length > 0);
 
     try {
-      await onSave(contact.id!, {
+      await onSave(contact.id!, withEditedEvidence(contact, {
         name: name.trim(),
-        evidence: {}, professionalContacts: [], corporateOfficers: [],
         entityType,
         phone: phone.trim(),
-        email: email.trim() || undefined,
-        instagram: instagram.trim() || undefined,
+        email: email.trim(),
+        instagram: instagram.trim(),
         location: location.trim(),
         category: category.trim(),
         department: department.trim(),
         decisionMaker: decisionMaker.trim(),
-        demandTimeframe: demandTimeframe.trim() || undefined,
-        competitorPrices: competitorPrices.trim() || undefined,
+        demandTimeframe: demandTimeframe.trim(),
+        competitorPrices: competitorPrices.trim(),
         pitchRecommendation: pitchRecommendation.trim(),
-        trendingInsights: parsedInsights.length > 0 ? parsedInsights : undefined,
+        trendingInsights: parsedInsights,
         profileUrl: profileUrl.trim(),
         company: company.trim(),
         role: role.trim(),
         status,
         notes: notes.trim(),
-      });
+      }));
       onClose();
     } catch (err: any) {
       setError(err.message || 'Erro ao salvar alterações');
@@ -382,7 +382,7 @@ export function EditContactModal({
                 <FileText className="h-3.5 w-3.5 text-zinc-400" />
                 <span>Observação & Intenção de Compra</span>
               </label>
-              {hasPurchaseIntent(notes) && (
+              {hasPurchaseIntent(contact || undefined) && (
                 <span className="inline-flex items-center gap-1 rounded bg-amber-500/20 border border-amber-500/40 px-2 py-0.5 text-[10px] font-bold text-amber-300">
                   <Flame className="h-3 w-3 text-orange-400 fill-orange-400 animate-pulse" />
                   Alerta de Necessidade Ativo
@@ -395,7 +395,7 @@ export function EditContactModal({
               onChange={(e) => setNotes(e.target.value)}
               placeholder="Ex: Comprador buscando cotação urgente de clarificante para usinas..."
               className={`w-full rounded-lg bg-zinc-950 p-2.5 text-zinc-200 focus:outline-none transition ${
-                hasPurchaseIntent(notes)
+                hasPurchaseIntent(contact || undefined)
                   ? 'border border-amber-500/50 focus:border-amber-400 ring-1 ring-amber-500/20'
                   : 'border border-zinc-700 focus:border-indigo-500'
               }`}

@@ -124,7 +124,7 @@ export function ContactTableView({
         statusFilter === 'all'
           ? true
           : statusFilter === 'need_alert'
-          ? hasPurchaseIntent(c.notes)
+          ? hasPurchaseIntent(c)
           : c.status === statusFilter;
 
       // 3. Entity Type matching
@@ -277,7 +277,7 @@ export function ContactTableView({
     };
 
     const rows = listToExport.map((c) => {
-      const isUrgentBuy = hasPurchaseIntent(c.notes) ? 'SIM (Alerta Ativo)' : 'NÃO';
+      const isUrgentBuy = hasPurchaseIntent(c) ? 'SIM (Intenção publicada)' : 'NÃO';
       const createdDateFormatted = c.createdAt 
         ? `${new Date(c.createdAt).toLocaleDateString('pt-BR')} ${new Date(c.createdAt).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}`
         : '';
@@ -329,7 +329,7 @@ export function ContactTableView({
   const statusCounts = useMemo(() => {
     return {
       all: contacts.length,
-      needAlert: contacts.filter((c) => hasPurchaseIntent(c.notes)).length,
+      needAlert: contacts.filter((c) => hasPurchaseIntent(c)).length,
       new: contacts.filter((c) => c.status === 'new').length,
       contacted: contacts.filter((c) => c.status === 'contacted').length,
       meeting: contacts.filter((c) => c.status === 'meeting').length,
@@ -510,7 +510,7 @@ export function ContactTableView({
                 className="w-full bg-transparent font-medium text-zinc-200 focus:outline-none cursor-pointer text-xs"
               >
                 <option value="all" className="bg-zinc-900 text-zinc-200">Todos ({statusCounts.all})</option>
-                <option value="need_alert" className="bg-zinc-900 text-amber-300 font-semibold">🔥 Alerta de Necessidade ({statusCounts.needAlert})</option>
+                <option value="need_alert" className="bg-zinc-900 text-amber-300 font-semibold">🔥 Intenção publicada ({statusCounts.needAlert})</option>
                 <option value="new" className="bg-zinc-900 text-zinc-200">Novo ({statusCounts.new})</option>
                 <option value="contacted" className="bg-zinc-900 text-zinc-200">Contatado ({statusCounts.contacted})</option>
                 <option value="meeting" className="bg-zinc-900 text-zinc-200">Reunião ({statusCounts.meeting})</option>
@@ -627,7 +627,7 @@ export function ContactTableView({
         <div className="flex flex-wrap items-center gap-1.5">
           {[
             { id: 'all', label: 'Todos os Contatos', count: statusCounts.all },
-            { id: 'need_alert', label: 'Alerta de Necessidade', count: statusCounts.needAlert, isFlame: true },
+            { id: 'need_alert', label: 'Intenção publicada', count: statusCounts.needAlert, isFlame: true },
             { id: 'new', label: 'Novos', count: statusCounts.new },
             { id: 'contacted', label: 'Contatados', count: statusCounts.contacted },
             { id: 'meeting', label: 'Reunião Marcada', count: statusCounts.meeting },
@@ -854,10 +854,10 @@ export function ContactTableView({
                                   PJ
                                 </span>
                               )}
-                              {hasPurchaseIntent(contact.notes) && (
+                              {hasPurchaseIntent(contact) && (
                                 <span 
                                   className="inline-flex items-center gap-1 rounded bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 border border-orange-500/40 px-1.5 py-0.5 text-[9px] font-bold text-amber-300 shadow-sm shadow-orange-500/10 shrink-0"
-                                  title={`Alerta de Necessidade: ${contact.notes || 'Intenção de compra detectada'}`}
+                                  title={`Intenção publicada: ${contact.notes || 'Intenção de compra detectada'}`}
                                 >
                                   <Flame className="h-3 w-3 text-orange-400 fill-orange-400 animate-pulse" />
                                   <span>Alerta</span>
@@ -933,12 +933,12 @@ export function ContactTableView({
 
                       {/* Instagram Oficial com Logotipo e Perfil Real */}
                       <td className="p-3.5">
-                        <div className="flex flex-col gap-1.5 min-w-[175px]">
+                        {insta.url ? <div className="flex flex-col gap-1.5 min-w-[175px]">
                           <div className="flex items-center gap-2">
                             <InstagramLogo size={20} className="shrink-0 rounded-md shadow-sm" />
                             <div className="min-w-0">
                               <a
-                                href={insta.url}
+                                href={insta.url || undefined}
                                 target="_blank"
                                 rel="noopener noreferrer"
                                 className="font-mono font-bold text-xs text-pink-300 hover:text-white hover:underline truncate block"
@@ -961,7 +961,7 @@ export function ContactTableView({
 
                           <div className="flex items-center gap-1.5">
                             <a
-                              href={insta.url}
+                              href={insta.url || undefined}
                               target="_blank"
                               rel="noopener noreferrer"
                               className="inline-flex items-center gap-1 px-2 py-0.5 rounded text-[10px] font-medium bg-gradient-to-r from-pink-950/70 to-purple-950/70 text-pink-200 hover:text-white border border-pink-700/50 hover:border-pink-400 transition shadow-sm"
@@ -988,7 +988,7 @@ export function ContactTableView({
                               )}
                             </button>
                           </div>
-                        </div>
+                        </div> : <span className="text-xs text-zinc-500">Perfil não publicado</span>}
                       </td>
 
                       {/* Produtos Buscados & Preços Concorrentes */}
@@ -1136,7 +1136,7 @@ export function ContactTableView({
                           </button>
 
                           <a
-                            href={`https://wa.me/${cleanPhone}`}
+                            href={cleanPhone ? `https://wa.me/${cleanPhone}` : undefined}
                             target="_blank"
                             rel="noreferrer"
                             className="p-1.5 rounded-md bg-zinc-800 text-emerald-400 hover:bg-emerald-600 hover:text-white transition"
@@ -1154,7 +1154,7 @@ export function ContactTableView({
                             </a>
                           )}
                           <a
-                            href={`tel:${cleanPhone}`}
+                            href={cleanPhone ? `tel:${cleanPhone}` : undefined}
                             className="p-1.5 rounded-md bg-zinc-800 text-zinc-300 hover:bg-zinc-700 hover:text-white transition"
                             title="Ligar"
                           >

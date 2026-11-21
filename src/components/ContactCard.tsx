@@ -152,6 +152,7 @@ export function ContactCard({
       
       <div>
         <SourceEvidence record={contact} />
+        {contact.recordType === 'potential_company' && <p className="mt-2 text-xs text-amber-300">Empresa potencial — demanda pelo produto não comprovada.</p>}
       {/* Top Header */}
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0 flex-1">
@@ -221,13 +222,13 @@ export function ContactCard({
                   <span>{contact.demandTimeframe}</span>
                 </span>
               )}
-              {hasPurchaseIntent(contact.notes) && (
+              {hasPurchaseIntent(contact) && (
                 <span 
                   className="inline-flex items-center gap-1 rounded-md bg-gradient-to-r from-amber-500/20 via-orange-500/20 to-rose-500/20 border border-orange-500/40 px-2 py-0.5 text-[10px] font-bold text-amber-300 shadow-sm shadow-orange-500/10"
-                  title="Alerta de Necessidade: Intenção de compra detectada no campo de observação"
+                  title="Intenção publicada: Intenção de compra detectada no campo de observação"
                 >
                   <Flame className="h-3 w-3 text-orange-400 fill-orange-400 animate-pulse shrink-0" />
-                  <span>Alerta de Necessidade</span>
+                  <span>Intenção publicada</span>
                 </span>
               )}
             </div>
@@ -676,7 +677,7 @@ export function ContactCard({
         )}
 
         {/* Instagram Oficial com Logotipo Vetorial Autêntico */}
-        <div className={`mt-2.5 rounded-lg border ${
+        {insta.url && <div className={`mt-2.5 rounded-lg border ${
           insta.isVerifiedBrand 
             ? 'border-pink-500/50 bg-gradient-to-r from-pink-950/40 via-purple-950/30 to-zinc-900/60 shadow-sm shadow-pink-500/10'
             : 'border-pink-500/30 bg-gradient-to-r from-pink-950/25 via-purple-950/20 to-zinc-900/40'
@@ -700,7 +701,7 @@ export function ContactCard({
                 )}
               </div>
               <a 
-                href={insta.url} 
+                href={insta.url || undefined}
                 target="_blank"
                 rel="noopener noreferrer"
                 className="font-mono text-xs font-bold text-pink-200 hover:text-white hover:underline truncate block"
@@ -713,7 +714,7 @@ export function ContactCard({
 
           <div className="flex items-center gap-1.5 shrink-0">
             <a
-              href={insta.url}
+              href={insta.url || undefined}
               target="_blank"
               rel="noopener noreferrer"
               className="flex items-center gap-1 rounded bg-pink-950/60 border border-pink-700/50 hover:border-pink-400 px-2 py-1 text-[10px] font-medium text-pink-200 hover:text-white transition shadow-sm"
@@ -741,6 +742,8 @@ export function ContactCard({
             </button>
           </div>
         </div>
+
+        }
 
         {/* Location Section */}
         {contact.location && (
@@ -828,7 +831,7 @@ export function ContactCard({
         {/* Observation / Notes & Intent */}
         {contact.notes && (
           <div className={`mt-2.5 rounded-lg p-2.5 text-xs border ${
-            hasPurchaseIntent(contact.notes)
+            hasPurchaseIntent(contact)
               ? 'bg-amber-950/20 border-amber-500/30'
               : 'bg-zinc-950/40 border-zinc-800/80'
           }`}>
@@ -837,10 +840,10 @@ export function ContactCard({
                 <FileText className="h-3 w-3 text-zinc-400" />
                 Observação / Intenção
               </span>
-              {hasPurchaseIntent(contact.notes) && (
+              {hasPurchaseIntent(contact) && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-bold text-amber-400">
                   <Flame className="h-3 w-3 text-orange-400 fill-orange-400 animate-pulse" />
-                  Alerta Ativo
+                  Intenção publicada
                 </span>
               )}
             </div>
@@ -909,7 +912,7 @@ export function ContactCard({
 
           <div className="flex items-center gap-2">
             <a
-              href={`https://wa.me/${cleanPhone}`}
+              href={cleanPhone ? `https://wa.me/${cleanPhone}` : undefined}
               target="_blank"
               rel="noreferrer"
               className="flex items-center gap-1 rounded-lg bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 px-2.5 py-1 text-xs font-semibold text-emerald-400 hover:text-emerald-300 transition"
@@ -919,7 +922,7 @@ export function ContactCard({
               <span>WhatsApp Direto</span>
             </a>
             <a
-              href={`tel:${cleanPhone}`}
+              href={cleanPhone ? `tel:${cleanPhone}` : undefined}
               className="flex items-center gap-1 rounded-lg border border-zinc-700 bg-zinc-800 px-2.5 py-1 text-xs font-semibold text-zinc-200 hover:bg-zinc-700 hover:text-white transition"
               title="Fazer ligação"
             >
