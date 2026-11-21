@@ -2,6 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {searchBusinesses} from '../src/server/verifiedSearch.js';
 const place = (id,name,category) => ({id,displayName:{text:name},primaryTypeDisplayName:{text:category},formattedAddress:'Uberlândia - MG',googleMapsUri:`https://maps.google.com/?cid=${id}`,nationalPhoneNumber:'(34) 3333-3333',websiteUri:'https://farm.example.test'});
+test('industrial refrigerator search rejects grocery and butcher shops using frigorifico in trading name', async () => {
+ const result = await searchBusinesses({query:'antiderrapante',location:'Brasil',prospectMode:'potential',targetSectors:['frigoríficos']}, {
+  mapsKey:'fixture',fetcher:async()=>({ok:true,json:async()=>({places:[place('1','Frigorífico teste','Fabricante'),place('2','Frigorífico varejo','Mercearia'),place('3','Frigorífico carnes','Açougue')]})}),
+  readPage:async()=>{throw Error('Unavailable');},
+ });
+ assert.deepEqual(result.leads.map(lead=>lead.name),['Frigorífico teste']);
+ assert.equal(result.meta.searchDiagnostics[0].rejectedCategory,2);
+});
 test('potential iodine buyers use explicit sectors, reject unrelated stations, preserve Maps and published purchasing contact',async()=>{
  const result=await searchBusinesses({query:'compradores de iodo 10%',location:'Brasil',count:4,prospectMode:'potential',targetEntityType:'both',targetSectors:['fazendas leiteiras']},{mapsKey:'fixture',fetcher:async(_url,options)=>{assert.equal(JSON.parse(options.body).textQuery,'fazendas leiteiras em Brasil');return {ok:true,json:async()=>({places:[place('1','Fazendas Leiteiras Fixture','Fazendas leiteiras'),place('2','Posto Fixture','Posto de combustível')]})};},readPage:async url=>({url,html:'<title>Fazendas Leiteiras Fixture</title><script type="application/ld+json">{"@type":"Organization","name":"Fazendas Leiteiras Fixture","employee":{"@type":"Person","name":"Ana Fixture","jobTitle":"Gerente de compras","telephone":"(34) 99999-9999"}}</script>'})});
  assert.equal(result.leads.length,1);

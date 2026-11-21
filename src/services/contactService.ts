@@ -1,15 +1,5 @@
-import { 
-  collection, 
-  addDoc, 
-  updateDoc, 
-  deleteDoc, 
-  doc, 
-  onSnapshot, 
-  query, 
-  orderBy,
-  serverTimestamp,
-  writeBatch
-} from 'firebase/firestore';
+import { collection, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { mutateCrm } from './crmApi';
 import { db } from '../lib/firebase';
 import type { Contact } from '../types';
 
@@ -90,102 +80,34 @@ export function subscribeContacts(
   );
 }
 
-/**
- * Recursively cleans an object to remove undefined values, which are rejected by Firestore.
- */
-function cleanForFirestore<T extends Record<string, any>>(obj: T): Record<string, any> {
-  const result: Record<string, any> = {};
-  for (const [key, value] of Object.entries(obj)) {
-    if (value !== undefined) {
-      if (value && typeof value === 'object' && !Array.isArray(value) && !(value instanceof Date)) {
-        result[key] = cleanForFirestore(value);
-      } else {
-        result[key] = value;
-      }
-    }
-  }
-  return result;
-}
-
 export async function addContactToFirestore(
   userId: string,
   contact: Omit<Contact, 'id' | 'createdAt' | 'updatedAt'>
 ): Promise<string> {
-  if (!userId) throw new Error('Usuário não autenticado');
-
-  const contactsRef = collection(db, 'users', userId, 'contacts');
-  const cleaned = cleanForFirestore(contact);
-  const docRef = await addDoc(contactsRef, {
-    ...cleaned,
-    createdAt: serverTimestamp(),
-    updatedAt: serverTimestamp(),
-  });
-
-  return docRef.id;
+  const result = await mutateCrm(userId, {action: 'saveContacts', contacts: [contact]});
+  if (!result.ids?.[0]) throw new Error('Gravação do contato não confirmada.');
+  return result.ids[0];
 }
 
 export async function batchAddContactsToFirestore(
   userId: string,
   contacts: Omit<Contact, 'id' | 'createdAt' | 'updatedAt'>[]
 ): Promise<void> {
-  if (!userId || contacts.length === 0) return;
-
-  const batch = writeBatch(db);
-  const contactsRef = collection(db, 'users', userId, 'contacts');
-
-  contacts.forEach((c) => {
-    const newDocRef = doc(contactsRef);
-    const cleaned = cleanForFirestore(c);
-    batch.set(newDocRef, {
-      ...cleaned,
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-  });
-
-  await batch.commit();
+  for (let offset = 0; offset < contacts.length; offset += 10) {
+    await mutateCrm(userId, {action: 'saveContacts', contacts: contacts.slice(offset, offset + 10)});
+  }
 }
 
-export async function updateContactInFirestore(
-  userId: string,
-  contactId: string,
-  data: Partial<Contact>
-): Promise<void> {
-  if (!userId || !contactId) throw new Error('Dados inválidos');
-
-  const contactRef = doc(db, 'users', userId, 'contacts', contactId);
-  const cleanData: Record<string, any> = cleanForFirestore(data);
-  delete cleanData.id;
-  delete cleanData.createdAt;
-  cleanData.updatedAt = serverTimestamp();
-
-  await updateDoc(contactRef, cleanData);
+export async function updateContactInFirestore(userId: string, contactId: string, data: Partial<Contact>): Promise<void> {
+  await mutateCrm(userId, {action: 'updateContact', id: contactId, data});
 }
 
-export async function deleteContactFromFirestore(
-  userId: string,
-  contactId: string
-): Promise<void> {
-  if (!userId || !contactId) throw new Error('Dados inválidos');
-
-  const contactRef = doc(db, 'users', userId, 'contacts', contactId);
-  await deleteDoc(contactRef);
+export async function deleteContactFromFirestore(userId: string, contactId: string): Promise<void> {
+  await mutateCrm(userId, {action: 'deleteContacts', ids: [contactId]});
 }
 
-export async function batchDeleteContacts(
-  userId: string,
-  contactIds: string[]
-): Promise<void> {
-  if (!userId || contactIds.length === 0) return;
-
-  const CHUNK_SIZE = 400;
-  for (let i = 0; i < contactIds.length; i += CHUNK_SIZE) {
-    const chunk = contactIds.slice(i, i + CHUNK_SIZE);
-    const batch = writeBatch(db);
-    chunk.forEach((id) => {
-      const contactRef = doc(db, 'users', userId, 'contacts', id);
-      batch.delete(contactRef);
-    });
-    await batch.commit();
+export async function batchDeleteContacts(userId: string, contactIds: string[]): Promise<void> {
+  for (let offset = 0; offset < contactIds.length; offset += 400) {
+    await mutateCrm(userId, {action: 'deleteContacts', ids: contactIds.slice(offset, offset + 400)});
   }
 }

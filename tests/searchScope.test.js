@@ -9,7 +9,7 @@ test('buyer requests in both or company mode never call Places or return gas sta
   assert.equal(productQuery(query),'iodo 10%');
   for(const targetEntityType of ['both','pj']) {
    let collected=false;
-   const result=await searchBusinesses({query,location:'Brasil',count:4,targetEntityType},{limits:{enabled:false},store:null,fetcher:()=>assert.fail('Places must not be called'),collectWorker:async body=>{collected=true;assert.equal(body.query,'iodo 10%');assert.equal(body.location,'Brasil');return {records:[],reports:[],pending:[]};}});
+   const result=await searchBusinesses({query,location:'Brasil',count:4,targetEntityType},{limits:{enabled:false},collectPncp:async()=>({leads:[],received:0,failures:0}),store:null,fetcher:()=>assert.fail('Places must not be called'),collectWorker:async body=>{collected=true;assert.equal(body.query,'iodo 10%');assert.equal(body.location,'Brasil');return {records:[],reports:[],pending:[]};}});
    assert.ok(collected);assert.deepEqual(result.leads,[]);
   }
  }

@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { deleteField, doc, FieldPath, onSnapshot, setDoc, updateDoc } from 'firebase/firestore';
+import { doc, onSnapshot } from 'firebase/firestore';
+import { mutateCrm } from '../services/crmApi';
 import { db } from '../lib/firebase';
 import type { EntityType } from '../types';
 
@@ -46,9 +47,7 @@ export function ProspectingProjects({ userId, setup, busy, onLoad }: {
     setSaving(true);
     try {
       const id = crypto.randomUUID();
-      await setDoc(doc(db, 'users', userId), {
-        prospectingProjects: { [id]: { id, name: name.trim(), setup } },
-      }, { merge: true });
+      await mutateCrm(userId, {action: 'saveProject', id, name: name.trim(), setup});
       setName('');
       setMessage('Projeto salvo. Use Carregar filtros e depois Buscar para executar.');
     } catch {
@@ -61,7 +60,7 @@ export function ProspectingProjects({ userId, setup, busy, onLoad }: {
   async function remove(id: string) {
     setSaving(true);
     try {
-      await updateDoc(doc(db, 'users', userId), new FieldPath('prospectingProjects', id), deleteField());
+      await mutateCrm(userId, {action: 'deleteProject', id});
       setMessage('Projeto removido.');
     } catch {
       setMessage('Não foi possível remover o projeto.');

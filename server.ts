@@ -1,5 +1,6 @@
 import {protectedHandler} from './src/server/serverAuth.js';
 import express from 'express';
+import { mutateCrm } from './src/server/crm.js';
 import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
@@ -11,10 +12,14 @@ import {sourceStatus} from './src/server/sourceStatus.js';
 dotenv.config();
 async function startServer() {
   const app = express();
+  app.use('/api/crm', express.json({limit: '1mb'}));
   app.use(express.json({limit: '32kb'}));
+  app.post('/api/crm', protectedHandler(mutateCrm));
   app.get('/api/health', (_req,res) => res.json({status:'ok',mode:'evidence-only'}));
   app.post(['/api/deep-search','/api/ai/deep-search'], protectedHandler(searchBusinesses));
   app.post(['/api/b2c-search','/api/b2c-multifactor-search'], protectedHandler(startBuyerRadar));
+  app.post('/api/demand-radar', protectedHandler((body, deps) =>
+    startBuyerRadar({...body, includeMarketplaces: false}, {...deps, freeOnly: true})));
   app.post('/api/social-radar',protectedHandler(socialRadar));
   app.get('/api/source-status',(_req,res) => res.json(sourceStatus()));
   app.post('/api/extract-url', protectedHandler(extractWebsite));

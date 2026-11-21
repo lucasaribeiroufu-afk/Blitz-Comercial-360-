@@ -174,6 +174,11 @@ export async function searchBusinesses(body, deps = {}) {
       const terms = normalize(p.query).split(' ').filter(t => !['de','da','do','e','para','em'].includes(t));
       const searchable = normalize(`${place.displayName.text} ${place.primaryTypeDisplayName?.text || ''}`);
       let categoryMatches = terms.length && terms.every(t => searchable.split(' ').some(w => w === t || w === t+'s' || t === w+'s' || (t.length >= 5 && w.slice(0,-1) === t.slice(0,-1))));
+      // A trading name containing “frigorífico” can identify a butcher shop or grocery.
+      if (/\b(frigorifico|frigorificos|abatedouro|abatedouros)\b/.test(normalize(p.query))
+        && /\b(mercearia|acougue|supermercado|restaurante|loja)\b/.test(normalize(place.primaryTypeDisplayName?.text || ''))) {
+        categoryMatches = false;
+      }
       let sectorEvidence;
       // A farm's legal/trade name need not describe its dairy activity.
       // Only this explicit sector alias may use linked-site corroboration; unrelated businesses remain excluded.

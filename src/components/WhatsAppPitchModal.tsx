@@ -249,23 +249,23 @@ export function WhatsAppPitchModal({
     const dest = contact.location || 'seu estabelecimento';
 
     if (shippingProposalMode === 'CIF') {
-      return `*PROPOSTA COMERCIAL (MODALIDADE CIF - FRETE INCLUSO)* 📦🚚\n\n` +
+      return `*SIMULAÇÃO PARA REVISÃO (MODALIDADE CIF - FRETE INCLUSO)* 📦🚚\n\n` +
         `Olá, *${contact.name}*! Tudo bem? Aqui é o ${sellerName}.\n` +
         `Segue nossa cotação especial com entrega direta na sua empresa:\n\n` +
         `🏢 *Destinatário:* ${compName} (${dest})\n` +
         `📦 *Produto:* ${productInfo.productName}\n` +
         `🔢 *Volume / Quantidade:* ${qty} un\n` +
-        `🚚 *Modalidade:* *CIF (Frete e Seguro 100% Inclusos na Porta)*\n` +
+        `🚚 *Modalidade:* *CIF (Frete informado na simulação)*\n` +
         `💵 *Preço Unitário CIF:* R$ ${unitSalesCIF.toFixed(2)}\n` +
         `💰 *Valor Total do Pedido:* R$ ${totalCIF.toFixed(2)}\n\n` +
-        `✅ Carga 100% segurada com rastreamento de transporte\n` +
-        `✅ Emissão imediata de Nota Fiscal e laudo de conformidade\n` +
-        `💳 *Condições:* PIX com desconto adicional ou Boleto Faturado PJ (mediante cadastro rápido)\n\n` +
-        `Podemos reservar esse lote para entrega programada?`;
+        `Seguro e transporte sujeitos à confirmação comercial\n` +
+        `Documentação fiscal e técnica a confirmar\n` +
+        `💳 *Condições:* Sujeitas à aprovação comercial\n\n` +
+        `Podemos confirmar as condições antes de emitir uma proposta?`;
     }
 
     if (shippingProposalMode === 'FOB') {
-      return `*PROPOSTA COMERCIAL (MODALIDADE FOB - RETIRADA NA BASE)* 🏭📦\n\n` +
+      return `*SIMULAÇÃO PARA REVISÃO (MODALIDADE FOB - RETIRADA NA BASE)* 🏭📦\n\n` +
         `Olá, *${contact.name}*! Tudo bem? Aqui é o ${sellerName}.\n` +
         `Segue nossa cotação especial para retirada na base pelo comprador:\n\n` +
         `🏢 *Empresa:* ${compName}\n` +
@@ -274,25 +274,25 @@ export function WhatsAppPitchModal({
         `🏭 *Modalidade:* *FOB (Retirada por conta do comprador)*\n` +
         `💵 *Preço Unitário FOB:* R$ ${unitSalesFOB.toFixed(2)}\n` +
         `💰 *Valor Total do Lote:* R$ ${totalFOB.toFixed(2)}\n\n` +
-        `✅ Mercadoria disponível para carregamento imediato\n` +
-        `✅ Nota Fiscal com laudo técnico oficial\n` +
-        `💳 *Condições:* PIX ou Boleto Faturado PJ\n\n` +
+        `Disponibilidade e prazo a confirmar\n` +
+        `Documentação fiscal e técnica a confirmar\n` +
+        `💳 *Condições:* Sujeitas à aprovação comercial\n\n` +
         `Qual transportadora ou veículo costuma coletar para vocês?`;
     }
 
     // Modalidade COMPARATIVE
-    return `*COTAÇÃO COMPARATIVA - BLITZ 360 (FOB vs CIF)* 📊\n\n` +
+    return `*SIMULAÇÃO COMPARATIVA - BLITZ 360 (FOB vs CIF)* 📊\n\n` +
       `Olá, *${contact.name}*! Tudo bem? Aqui é o ${sellerName}.\n` +
       `Preparamos as duas opções de fornecimento para a *${compName}*:\n\n` +
       `📦 *Produto:* ${productInfo.productName} | *Qtd:* ${qty} un\n\n` +
       `1️⃣ *OPÇÃO CIF (Entrega no seu endereço com frete incluso):*\n` +
       `• Valor Unitário: *R$ ${unitSalesCIF.toFixed(2)}*\n` +
       `• Total Entregue: *R$ ${totalCIF.toFixed(2)}* (Frete de R$ ${totalFreight.toFixed(2)} já incluso)\n` +
-      `• Vantagem: Carga segurada até a porta, sem custo adicional de frete.\n\n` +
+      `• Seguro, transporte e condições finais a confirmar.\n\n` +
       `2️⃣ *OPÇÃO FOB (Retirada na base com transportadora do cliente):*\n` +
       `• Valor Unitário: *R$ ${unitSalesFOB.toFixed(2)}*\n` +
       `• Total na Base: *R$ ${totalFOB.toFixed(2)}*\n` +
-      `• Vantagem: Máxima economia se você já possui frota ou contrato próprio de transporte.\n\n` +
+      `• Retirada e condições finais a confirmar.\n\n` +
       `Qual das duas modalidades é mais vantajosa para o seu planejamento hoje?`;
   }, [shippingProposalMode, contact, sellerName, productInfo, qty, unitSalesCIF, totalCIF, totalFreight, unitSalesFOB, totalFOB]);
 

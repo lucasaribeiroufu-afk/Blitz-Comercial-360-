@@ -6,7 +6,7 @@ import {
   memoryCacheGet,
   memoryCacheSet,
 } from "../src/server/radarStore.js";
-import { startBuyerRadar, pollBuyerRadar } from "../src/server/buyerRadar.js";
+import { startBuyerRadar as runBuyerRadar, pollBuyerRadar } from "../src/server/buyerRadar.js";
 import {
   sourceReport,
   classifyRecords,
@@ -21,6 +21,10 @@ import {
   professionalContacts,
   structuralPhone,
 } from "../src/server/professionalContacts.js";
+const startBuyerRadar = (body, deps = {}) => runBuyerRadar(body, {
+  collectPncp: async () => ({leads: [], received: 0, failures: 0}),
+  ...deps,
+});
 const now = Date.parse("2026-10-13T12:00:00Z");
 const record = (text) => ({
   text,

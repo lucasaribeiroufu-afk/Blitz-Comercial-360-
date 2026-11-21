@@ -1,14 +1,17 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Each user can read and write their own contacts
-    match /users/{userId}/contacts/{contactId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    match /blitz_server_v2_users/{document=**} {
+      allow read, write: if false;
     }
-    
-    // User profile settings/preferences
-    match /users/{userId} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+    match /users/{uid}/{collection}/{id} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      // Mutations are authenticated and scoped to the owner by /api/crm.
+      allow write: if false;
+    }
+    match /users/{uid} {
+      allow read: if request.auth != null && request.auth.uid == uid;
+      allow write: if false;
     }
   }
 }

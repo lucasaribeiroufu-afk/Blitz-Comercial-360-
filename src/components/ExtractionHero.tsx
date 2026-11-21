@@ -103,7 +103,7 @@ function buildHarmonizedObjective(term: string, loc: string): string {
   if (lower.includes('restauran') || lower.includes('bar') || lower.includes('gastronom')) {
     return `proprietário e gerente de compras de restaurantes em ${cleanLoc} adquirindo insumos alimentícios e embalagens`;
   }
-  return `${cleanTerm} em ${cleanLoc} com decisor comercial, telefone verificado com DDD e dados cadastrais`;
+  return `${cleanTerm} em ${cleanLoc} com decisor comercial, contatos empresariais publicados e dados cadastrais disponíveis`;
 }
 
 export function ExtractionHero({
@@ -328,7 +328,7 @@ export function ExtractionHero({
 
     try {
       const displayQuery = effectiveObjective || effectiveTerm;
-      setLoadingStatus(`Processando inteligência Blitz 360 e mapeando clientes reais para: "${displayQuery}"...`);
+      setLoadingStatus(`Consultando fontes para: "${displayQuery}"...`);
       await new Promise((r) => setTimeout(r, 150));
 
       const freshSeed = Date.now();
@@ -379,6 +379,10 @@ export function ExtractionHero({
 
           return {
             name: r.name,
+            website: r.website || '',
+            company: r.company || '',
+            role: r.role || '',
+            tem_whatsapp: r.tem_whatsapp ?? null,
             evidence: r.evidence || {},
             professionalContacts:r.professionalContacts||[],corporateOfficers:r.corporateOfficers||[],companyContactLabel:r.companyContactLabel||'',
             authorDeclaredLocation:r.authorDeclaredLocation||'',publicationLocation:r.publicationLocation||'',groupContext:r.groupContext||'',
@@ -429,7 +433,9 @@ export function ExtractionHero({
         });
       }
     } catch (err: any) {
-      setError(err.message || 'Erro ao extrair contatos. Verifique sua conexão.');
+      setError(err.code === 'permission-denied'
+        ? 'A busca foi concluída, mas os contatos não foram salvos: o Firestore recusou a gravação. Exporte os resultados e confira as regras de acesso do banco.'
+        : err.message || 'Erro ao extrair contatos. Verifique sua conexão.');
     } finally {
       searchLock.current=false;
       setIsLoading(false);
@@ -490,6 +496,10 @@ export function ExtractionHero({
 
             return {
               name: r.name,
+            website: r.website || '',
+            company: r.company || '',
+            role: r.role || '',
+            tem_whatsapp: r.tem_whatsapp ?? null,
             evidence: r.evidence || {},
             professionalContacts:r.professionalContacts||[],corporateOfficers:r.corporateOfficers||[],companyContactLabel:r.companyContactLabel||'',
             authorDeclaredLocation:r.authorDeclaredLocation||'',publicationLocation:r.publicationLocation||'',groupContext:r.groupContext||'',
@@ -772,10 +782,10 @@ export function ExtractionHero({
           </div>
 
           <h1 className="text-2xl sm:text-3xl lg:text-4xl font-extrabold tracking-tight text-white mb-2">
-            Prospecção & Busca de <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-300">Clientes, Postos & Empresas</span>
+            Prospecção & Busca de <span className="text-transparent bg-clip-text bg-gradient-to-r from-blue-400 via-indigo-300 to-purple-300">Empresas e Pedidos Públicos</span>
           </h1>
           <p className="text-xs sm:text-sm text-zinc-400 max-w-2xl mx-auto">
-            Digite o nicho (ex: <strong>Posto de combustível</strong>, <strong>Supermercados</strong>, <strong>Usinas</strong>) e a cidade para extrair <strong>gerente de compras</strong>, <strong>telefone/WhatsApp direto com DDD</strong> e <strong>localização</strong>.
+            Informe o produto ou nicho e a região. Consulte empresas por segmento ou pedidos públicos de compra, com fontes e contatos disponíveis.
           </p>
         </div>
 
@@ -1233,7 +1243,7 @@ export function ExtractionHero({
               <span>{loadingStatus || 'Consultando inteligência de mercado e decisores...'}</span>
             </div>
             <p className="text-xs text-zinc-400">
-              Rastreando setores específicos, nomes de responsáveis por compras, telefones diretos e validando endereços.
+              Consultando o escopo solicitado. Contatos e responsáveis dependem das informações publicadas nas fontes.
             </p>
           </div>
         )}
@@ -1382,7 +1392,7 @@ export function ExtractionHero({
                     title="Abrir página do Banco de Contatos"
                   >
                     <CheckCheck className="h-3.5 w-3.5 text-emerald-400" />
-                    <span>Salvo no Banco</span>
+                    <span>{savedIds.size === extractedList.length ? 'Salvos no banco' : `${savedIds.size} de ${extractedList.length} salvos`}</span>
                     <ExternalLink className="h-3 w-3 ml-0.5 text-emerald-400" />
                   </button>
                 )}
@@ -1755,7 +1765,7 @@ export function ExtractionHero({
             {/* Continuous Harvesting */}
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-between gap-3 bg-zinc-900/60 border border-zinc-800/80 rounded-xl p-3.5">
               <div className="text-xs text-zinc-400">
-                <span className="font-semibold text-zinc-200">Safra #{currentPage}:</span> {extractedList.length} clientes reais captados (sem duplicidade).
+                <span className="font-semibold text-zinc-200">Safra #{currentPage}:</span> {extractedList.length} registros encontrados nesta pesquisa.
               </div>
 
               <button
@@ -1772,7 +1782,7 @@ export function ExtractionHero({
                 ) : (
                   <>
                     <Plus className="h-3.5 w-3.5" />
-                    <span>Buscar Mais Clientes Reais (Safra #{currentPage + 1})</span>
+                    <span>Buscar mais registros (Safra #{currentPage + 1})</span>
                   </>
                 )}
               </button>

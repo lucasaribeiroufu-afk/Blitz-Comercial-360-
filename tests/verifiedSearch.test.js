@@ -12,7 +12,7 @@ test('B2B never substitutes a gas station and respects exact municipality',async
 test('provider failure and missing keys are explicit; no fallback database',async()=>{
  await assert.rejects(searchBusinesses({query:'lojas'},{mapsKey:''}),/GOOGLE_MAPS_API_KEY/);
  await assert.rejects(searchBusinesses({query:'lojas'},{mapsKey:'fixture',fetcher:async()=>({ok:false,status:403})}),/HTTP 403/);
- assert.equal((await searchBuyers({query:'geladeira',location:'Uberlândia MG'},{limits:{enabled:false}})).meta.executionReport.state,'unavailable');
+ assert.equal((await searchBuyers({query:'geladeira',location:'Uberlândia MG'},{limits:{enabled:false},collectPncp:async()=>({leads:[],received:0,failures:0})})).meta.executionReport.state,'unavailable');
 });
 test('empty, quantity, exclusions and pagination are honest',async()=>{
  const fetcher=async()=>response({places:[place()]});
