@@ -70,10 +70,6 @@ export function EditContactModal({
       setError('O nome do contato é obrigatório.');
       return;
     }
-    if (!phone.trim()) {
-      setError('O telefone é obrigatório.');
-      return;
-    }
 
     setIsSaving(true);
     setError(null);
@@ -216,13 +212,12 @@ export function EditContactModal({
           {/* Telefone, Email & Instagram em Grid */}
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div>
-              <label className="block font-medium text-zinc-300 mb-1">Telefone / WhatsApp *</label>
+              <label className="block font-medium text-zinc-300 mb-1">Telefone publicado (opcional)</label>
               <input
                 type="text"
                 value={phone}
                 onChange={(e) => setPhone(e.target.value)}
                 className="w-full rounded-lg border border-zinc-700 bg-zinc-950 p-2.5 text-emerald-300 font-mono text-xs focus:border-indigo-500 focus:outline-none"
-                required
               />
             </div>
 
