@@ -53,7 +53,7 @@ export async function embeddedRequest(path, userId, payload, deps = {}) {
   try {
     const deadline = Math.min(Date.now()+40000,deps.deadline || Infinity);
     const discovery = input.discover ? await (deps.ativaDiscover || discover)(input,{
-      deadline:Math.min(deadline-10000,Date.now()+12000),read:deps.ativaRead || rawRead,
+      deadline:Math.min(deadline-10000,Date.now()+22000),read:deps.ativaRead || rawRead,authToken:deps.authToken,
     }) : {sources:[],candidates:[],reports:[]};
     const collectedSources = [...new Set([...input.sources,...discovery.sources])].slice(0,20);
     const output = await (deps.ativaCrawl || crawl)({...input,sources:collectedSources,maxPages:12,maxDepth:1}, {

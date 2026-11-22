@@ -1,6 +1,7 @@
 import {setTimeout as sleep} from 'node:timers/promises';
 import {canonicalUrl} from './config.js';
 import {rawRead} from './http.js';
+import infrastructure from './infrastructure.json' with {type:'json'};
 
 export function discoveryPlan(input) {
   const region = input.location === 'Brasil' ? '' : input.location;
@@ -14,7 +15,7 @@ export function discoveryPlan(input) {
 
 // Search results supply discovery URLs only. Qualification always reads the original page.
 export async function discover(input, {read = rawRead, deadline = Infinity,
-  searxUrl = process.env.BLITZ_ATIVA_SEARXNG_URL, maxQueries = 4} = {}) {
+  searxUrl = process.env.BLITZ_ATIVA_SEARXNG_URL || infrastructure.searxUrl, authToken, maxQueries = 4} = {}) {
   const reports = [], candidates = new Map();
   const engine = searxUrl ? 'SearXNG configurado' : 'Mwmbl público';
   const plan = discoveryPlan(input).slice(0,searxUrl ? maxQueries : Math.min(2,maxQueries));
@@ -25,9 +26,13 @@ export async function discover(input, {read = rawRead, deadline = Infinity,
     reports.push(report);
     try {
       const url = new URL(searxUrl ? canonicalUrl(searxUrl) : 'https://api.mwmbl.org/api/v2/search/');
-      if (searxUrl) {url.pathname = `${url.pathname.replace(/\/$/,'')}/search`;url.searchParams.set('format','json');url.searchParams.set('language','pt-BR');}
+      if (searxUrl) {
+        if (url.pathname !== '/' || url.search || url.hash) throw Error('SearXNG exige uma origem HTTPS sem caminho.');
+        url.pathname = '/search';url.searchParams.set('format','json');url.searchParams.set('language','pt-BR');
+      }
       url.searchParams.set('q',search.query);
-      const response = await read(url.href,{timeout:Math.max(1,Math.min(3500,deadline-Date.now()))});
+      const response = await read(url.href,{timeout:Math.max(1,Math.min(searxUrl ? 8000 : 3500,deadline-Date.now())),
+        ...(searxUrl && authToken ? {authorization:`Bearer ${authToken}`} : {})});
       if (response.status !== 200) throw Error(`HTTP ${response.status}`);
       const data = JSON.parse(response.body);
       if (!Array.isArray(data.results)) throw Error('Resposta de descoberta inválida.');
