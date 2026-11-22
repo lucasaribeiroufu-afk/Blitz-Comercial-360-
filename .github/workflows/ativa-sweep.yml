@@ -1,0 +1,21 @@
+name: Blitz Ativa scheduled collector
+on:
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  collect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Process one due collection batch
+        env:
+          CRON_TOKEN: ${{ secrets.BLITZ_ATIVA_CRON_SECRET }}
+        run: |
+          if [ -z "$CRON_TOKEN" ]; then
+            echo "Configure BLITZ_ATIVA_CRON_SECRET in repository secrets and in the Blitz server."
+            exit 1
+          fi
+          curl --fail --silent --show-error --max-time 58 \
+            --header "Authorization: Bearer $CRON_TOKEN" \
+            https://blitz-comercial-360.vercel.app/api/ativa

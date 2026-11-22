@@ -1,3 +1,5 @@
+import infrastructure from '../../blitz-ativa/infrastructure.json' with {type:'json'};
+import {scheduleAction} from './ativaSchedules.js';
 import {embeddedRequest} from './ativaEmbedded.js';
 import {SearchError} from './verifiedSearch.js';
 import {mutateCrm} from './crm.js';
@@ -45,17 +47,19 @@ export async function ativaRequest(path, userId, payload, deps = {}) {
 
 export async function ativaAction(body, deps = {}) {
   if (!deps.userId) throw new SearchError('Login obrigatório.', 401);
+  if (['schedule','saveSchedule'].includes(body.action)) return scheduleAction(body,deps);
   const call = (path, payload) => ativaRequest(path, deps.userId, payload, deps);
-  if (body.action === 'status') return {configured:true, mode:process.env.BLITZ_ATIVA_URL ? 'dedicated' : 'embedded'};
+  if (body.action === 'status') return {configured:true, mode:process.env.BLITZ_ATIVA_URL ? 'dedicated' : 'embedded', searxConfigured:!!(process.env.BLITZ_ATIVA_SEARXNG_URL || infrastructure.searxUrl), socialConfigured:!!(process.env.SOCIAL_WORKER_URL && process.env.SOCIAL_WORKER_TOKEN), youtubeConfigured:!!process.env.YOUTUBE_API_KEY};
   if (body.action === 'list') return call('/v1/jobs');
   if (body.action === 'sources') return call('/v1/sources');
   if (body.action === 'addSource') return call('/v1/sources', body.source);
   if (body.action === 'start') return call('/v1/jobs', {
-    query:body.query, location:body.location, audience:body.audience, alternatives:body.alternatives, discover:body.discover, sources:body.sources || [], pncp:body.pncp !== false,
+    query:body.query, location:body.location, audience:body.audience, alternatives:body.alternatives, discover:body.discover, wide:body.wide, sources:body.sources || [], pncp:body.pncp !== false,
     maxPages:20, maxDepth:2, maxAgeDays:30, pncpPages:2,
     requestKey:body.requestKey,
   });
   if (!/^[a-f\d-]{36}$/.test(body.id || '')) throw new SearchError('Execução inválida.', 400);
+  if (body.action === 'continue') return call(`/v1/jobs/${body.id}/continue`,{});
   const job = await call(`/v1/jobs/${body.id}`);
   if (body.action === 'get') return job;
   if (body.action === 'saveToCrm') {

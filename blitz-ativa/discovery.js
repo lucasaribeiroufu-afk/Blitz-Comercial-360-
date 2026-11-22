@@ -15,8 +15,9 @@ export function discoveryPlan(input) {
 
 // Search results supply discovery URLs only. Qualification always reads the original page.
 export async function discover(input, {read = rawRead, deadline = Infinity,
-  searxUrl = process.env.BLITZ_ATIVA_SEARXNG_URL || infrastructure.searxUrl, authToken, maxQueries = 4} = {}) {
+  searxUrl = process.env.BLITZ_ATIVA_SEARXNG_URL || infrastructure.searxUrl, authToken = process.env.BLITZ_ATIVA_SEARXNG_AUTH_TOKEN, maxQueries = 4} = {}) {
   const reports = [], candidates = new Map();
+  const groups = [];
   const engine = searxUrl ? 'SearXNG configurado' : 'Mwmbl público';
   const plan = discoveryPlan(input).slice(0,searxUrl ? maxQueries : Math.min(2,maxQueries));
   for (const [index, search] of plan.entries()) {
@@ -36,14 +37,17 @@ export async function discover(input, {read = rawRead, deadline = Infinity,
       if (response.status !== 200) throw Error(`HTTP ${response.status}`);
       const data = JSON.parse(response.body);
       if (!Array.isArray(data.results)) throw Error('Resposta de descoberta inválida.');
+      const group = [];
       for (const item of data.results.slice(0,20)) {
         try {
           const link = canonicalUrl(item.url);
           if (/\.(pdf|zip|jpg|jpeg|png|mp4)$/i.test(new URL(link).pathname)) continue;
+          group.push(link);
           if (!candidates.has(link)) candidates.set(link,{url:link,title:String(item.title || '').slice(0,300),
             purpose:search.purpose,query:search.query,source:engine,retrievedAt:report.retrievedAt,status:'discovered'});
         } catch { /* Unusable destinations never enter the collection queue. */ }
       }
+      groups.push(group);
       report.status = 'collected';report.received = data.results.length;
       if (data.unresponsive_engines?.length) {report.status='limited';report.reason='Parte dos mecanismos de pesquisa está indisponível.';}
     } catch (error) {
@@ -53,7 +57,8 @@ export async function discover(input, {read = rawRead, deadline = Infinity,
       break;
     }
   }
-  return {sources:[...candidates.keys()].slice(0,20),candidates:[...candidates.values()].slice(0,20),reports,
+  const ranked = [...new Set(Array.from({length:20},(_,index)=>groups.map(group=>group[index])).flat().filter(Boolean))].slice(0,20);
+  return {sources:ranked,candidates:ranked.map(url=>candidates.get(url)),reports,
     coverage:searxUrl ? 'Índice do SearXNG configurado, incluindo consultas por redes e experiências.' :
       'Índice público Mwmbl com cobertura limitada. Acesso anônimo sujeito à quota e disponibilidade do serviço. SearXNG próprio amplia as consultas.'};
 }
