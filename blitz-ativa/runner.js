@@ -9,12 +9,14 @@ export async function run(input, deps = {}) {
       official.reports.push({source:'PNCP', status:'failed', reason:error.message});
     }
   }
-  const records = [...new Map([...web.records, ...official.records].map(record => [record.key, record])).values()];
+  const allRecords = [...new Map([...web.records, ...official.records].map(record => [record.key, record])).values()];
+  const records = allRecords.slice(0, 100);
   const reports = [...web.pages, ...official.reports];
   const collected = reports.some(report => report.status === 'collected');
-  const partial = web.limited || reports.some(report => ['failed','blocked','limited'].includes(report.status) || report.itemsLimited);
-  return {records, report:{state:!collected ? 'unavailable' : partial ? 'partial' : 'complete',
+  const partial = allRecords.length > records.length || web.limited || reports.some(report => ['failed','blocked','limited'].includes(report.status) || report.itemsLimited);
+  return {records, documents:web.documents || [], report:{state:!collected ? 'unavailable' : partial ? 'partial' : 'complete',
     generatedAt:new Date().toISOString(), reports, pageLimitReached:web.limited,
+    recordLimitReached:allRecords.length > records.length,
     purchaseMentions:records.filter(record => record.recordType === 'purchase_mention').length,
     corporateContacts:records.filter(record => record.recordType === 'potential_company').length,
     regionalUnconfirmed:records.filter(record => record.recordType === 'region_unconfirmed').length,

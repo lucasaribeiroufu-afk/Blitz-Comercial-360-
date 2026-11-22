@@ -1,0 +1,14 @@
+services:
+  ativa:
+    build:
+      context: ..
+      dockerfile: blitz-ativa/Dockerfile
+    ports:
+      - "127.0.0.1:9090:9090"
+    environment:
+      BLITZ_ATIVA_TOKEN: ${BLITZ_ATIVA_TOKEN:?Configure o segredo de acesso}
+    volumes:
+      - ativa-data:/var/data
+    restart: unless-stopped
+volumes:
+  ativa-data:

@@ -1,7 +1,7 @@
 import {createHash} from 'node:crypto';
 import {load} from 'cheerio';
 import {intentAssessment, declaredRegion} from '../src/server/purchaseIntent.js';
-import {normalize, parsePage} from '../src/server/verifiedSearch.js';
+import {normalize, parsePage, validCnpj} from '../src/server/verifiedSearch.js';
 import {canonicalUrl} from './config.js';
 
 const types = object => [object?.['@type']].flat();
@@ -19,7 +19,7 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
   const retrievedAt = new Date(now).toISOString();
   const digest = identity(html);
   const records = [];
-  const evidence = (value, excerpt = value) => ({value, excerpt, sourceUrl, retrievedAt, contentHash:digest});
+  const evidence = (value, excerpt = value) => ({value, excerpt, sourceUrl, retrievedAt, contentHash:digest, source:'Página pública empresarial'});
   // Organization identity and its contact belong to the same structured object.
   // Arbitrary mailto links or comment text cannot supply corporate contact fields.
   const structured = parsePage(html).records;
@@ -31,9 +31,25 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     const email = String(organization.email || '').replace(/^mailto:/i, '');
     const phone = String(organization.telephone || '');
     const lead = {key:identity(`company:${website}:${organization.name}`), recordType:'potential_company',
-      name:organization.name, website, profileUrl:sourceUrl, matchedProduct:options.query,
+      name:organization.name, website, profileUrl:website, matchedProduct:options.query,
       verificationStatus:'source_observed', evidence:{name:evidence(organization.name)},
       prospectingBasis:'Contato empresarial publicado. Compra e aplicação do produto dependem de confirmação.'};
+    const address = organization.address;
+    const locality = typeof address?.addressLocality === 'string' ? address.addressLocality : '';
+    const region = typeof address?.addressRegion === 'string' ? address.addressRegion : '';
+    if (locality) {
+      lead.location = [locality, region].filter(Boolean).join(' - ');
+      lead.evidence.location = evidence(lead.location);
+    }
+    if (normalize(options.location) !== 'brasil') {
+      const requested = normalize(options.location).replace(/ /g, '');
+      const actual = normalize(lead.location).replace(/ /g, '');
+      if (locality && region && actual !== requested) continue;
+      if (!locality || !region) {lead.recordType = 'region_unconfirmed'; lead.geographicStatus = 'unconfirmed';}
+    }
+    if (validCnpj(organization.taxID || '')) {
+      lead.cnpj = String(organization.taxID).replace(/\D/g, ''); lead.evidence.cnpj = evidence(lead.cnpj);
+    }
     if (/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
       lead.email = email; lead.evidence.email = evidence(email);
     }
@@ -74,7 +90,7 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
   }
   // Discover one-hop publications referenced by RSS/Atom and ordinary same-host HTML links.
   const links = [];
-  $('a[href],item link,entry link').each((_index, element) => {
+  $('a[href],item link,entry link,url loc,sitemap loc').each((_index, element) => {
     const node = $(element);
     try {
       const url = canonicalUrl(new URL(node.attr('href') || node.text().trim(), sourceUrl).href);
@@ -82,5 +98,6 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
           !/\.(pdf|jpg|png|jpeg|zip|mp4|css|js)$/i.test(new URL(url).pathname)) links.push(url);
     } catch { /* Non-HTTP navigation is outside the crawl queue. */ }
   });
-  return {records, links:[...new Set(links)], discarded, contentHash:digest};
+  return {records, links:[...new Set(links)], discarded, contentHash:digest,
+    document:{url:sourceUrl, title:title.slice(0, 300), body:parsePage(html).text.slice(0, 24000), fetchedAt:retrievedAt}};
 }

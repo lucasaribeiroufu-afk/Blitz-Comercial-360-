@@ -4,6 +4,8 @@ import { getServerFirestore } from './radarStore.js';
 import { SearchError, validCnpj } from './verifiedSearch.js';
 
 const fields = new Set(('name cnpj phone whatsapp establishmentPhone decisionMakerPhone legalSource email instagram location profileUrl platform entityType category company role department decisionMaker pitchRecommendation trendingInsights competitorPrices demandTimeframe rating reviewsCount status notes tem_whatsapp telefone_receita razao_social nome_fantasia socios match_score website professionalContacts corporateOfficers companyContactLabel authorDeclaredLocation publicationLocation groupContext evidence verificationStatus recordType prospectSector prospectingBasis intent authorProfileUrl publishedAt geographicStatus matchedProduct').split(' '));
+fields.add('proposalDeadline');
+fields.add('proposalChannel');
 const statuses = new Set(['new', 'contacted', 'meeting', 'qualified', 'unreachable']);
 function contactData(value) {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new SearchError('Contato inválido.', 400);

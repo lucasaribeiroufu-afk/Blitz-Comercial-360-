@@ -4,6 +4,12 @@ on:
     paths:
       - 'blitz-ativa/**'
       - 'src/server/**'
+      - 'src/components/**'
+      - 'src/services/**'
+      - 'src/App.tsx'
+      - 'server.ts'
+      - 'api/ativa.js'
+      - '.dockerignore'
       - 'package*.json'
       - '.github/workflows/blitz-ativa.yml'
 permissions:

@@ -57,7 +57,8 @@ export async function procurement(options, {read = rawRead, now = Date.now(), de
             const payload = await get(path + `/itens?pagina=${itemPage}&tamanhoPagina=50`);
             const items = Array.isArray(payload) ? payload : payload.data;
             if (!Array.isArray(items)) throw Error('Itens PNCP em formato inesperado.');
-            for (const item of items.filter(item => matchesProduct(item.descricao || '', options.query))) {
+            for (const item of items.filter(item => matchesProduct(item.descricao || '', options.query)
+              && !/cancelad|anulad|revogad|homologad|fracassad|desert/i.test(item.situacaoCompraItemNome || ''))) {
               const intent = String(item.descricao);
               const sourceUrl = `https://pncp.gov.br/app/editais/${match[1]}/${match[3]}/${Number(match[2])}`;
               records.push({key:identity(`${match[0]}:${item.numeroItem}`), recordType:'purchase_mention',

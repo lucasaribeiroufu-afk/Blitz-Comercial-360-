@@ -57,6 +57,7 @@ test('region absent is retained as unconfirmed and divergent region is discarded
 
 test('corporate structured contacts stay with their organization and never imply purchase', () => {
   const html = page({'@type':'Organization', name:'Empresa de teste', url:'https://public.example/',
+    address:{addressLocality:'Uberlândia',addressRegion:'MG'},
     email:'compras@public.example', telephone:'+55 34 3000-1234'}) + '<a href="mailto:pessoa@example.test">Comentário</a>';
   const result = extract(html, options.sources[0], options, now);
   assert.equal(result.records[0].recordType, 'potential_company');
@@ -98,10 +99,15 @@ test('SQLite persists jobs, claims atomically and fences stale workers', () => {
     store.db.prepare('UPDATE jobs SET lease_until=0 WHERE id=?').run(job.id);
     const recovered = store.claim();
     assert.throws(() => store.finish(lease, [], {}), /expirada/);
-    store.finish(recovered, [{key:'same', name:'A'}, {key:'same', name:'A'}], {state:'complete'});
+    store.addSource('local', {url:'https://public.example/feed',label:'Pedidos',keywords:'tinta impermeabilizante'});
+    store.finish(recovered, [{key:'same', name:'A'}, {key:'same', name:'A'}], {state:'complete'}, '',
+      [{url:'https://public.example/post',title:'Pedido',body:'Tinta impermeabilizante',fetchedAt:new Date().toISOString()}]);
     store.close(); store = new Store(filename);
     assert.equal(store.get(job.id).records.length, 1);
     assert.equal(store.get(job.id).status, 'finished');
+    assert.equal(store.indexCount('local'),1);
+    assert.equal(store.sources('local').length,1);
+    assert.ok(store.discover('local','tinta impermeabilizante').includes('https://public.example/post'));
   } finally {store.close(); rmSync(folder, {recursive:true});}
 });
 

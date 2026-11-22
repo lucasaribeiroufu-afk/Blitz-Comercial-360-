@@ -1,4 +1,5 @@
 import { socialPlatform } from "./socialWorker.js";
+import {quotaFailure} from './providerQuota.js';
 import {buyerLocation} from '../utils/searchScope.js';
 import { sourceReport, classifyRecords, finishReport } from "./radarReport.js";
 import { marketplacePlans, normalizeMarketplaceRows } from "./marketplaces.js";
@@ -90,10 +91,13 @@ async function api(path, token, options = {}, deps = {}) {
       ),
     },
   );
-  if (!response.ok)
-    throw new SearchError(
-      `Apify respondeu HTTP ${response.status}. Verifique token, saldo e acesso ao Actor.`,
-    );
+  if (!response.ok) {
+    const exhausted = await quotaFailure(response);
+    throw Object.assign(new SearchError(
+      exhausted ? 'Créditos esgotados no Apify.' : `Apify respondeu HTTP ${response.status}. Verifique token, saldo e acesso ao Actor.`,
+      response.status,
+    ), {confirmedRejected:response.status >= 400 && response.status < 500});
+  }
   return response.json();
 }
 export async function discoverSources(query, location, deps = {}) {
@@ -162,6 +166,7 @@ export async function discoverSources(query, location, deps = {}) {
           if (!response.ok) {
             report.status = "failed";
             report.errors.push(`HTTP ${response.status}`);
+            if (await quotaFailure(response)) report.errors.push('Créditos esgotados no Serper.');
             return {
               sources: [],
               warning: `Descoberta ${search.platform}: HTTP ${response.status}.`,
@@ -544,6 +549,7 @@ export async function startSocialRadar(body, deps = {}) {
         };
       } catch (err) {
         report.status = "failed";
+        if (err.confirmedRejected) report.startUncertain = false;
         report.errors.push(err.message);
         if (report.startUncertain)
           report.limits.push(
@@ -645,7 +651,7 @@ export async function pollSocialRadar(body, deps = {}) {
             },
           );
           if (!response.ok)
-            throw new SearchError(`Apify respondeu HTTP ${response.status}.`);
+            throw new SearchError(await quotaFailure(response) ? 'Créditos esgotados no Apify.' : `Apify respondeu HTTP ${response.status}.`);
           const batch = await response.json();
           if (!Array.isArray(batch))
             throw new SearchError("Dataset incompatível.");

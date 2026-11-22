@@ -1,6 +1,6 @@
 # Blitz Ativa
 
-Serviço próprio de coleta pública B2B, versão inicial 0.1. Sem dependência das APIs pagas Serper ou Apify.
+Serviço próprio de coleta pública B2B, versão 0.2. Serper e Apify permanecem na prospecção principal do Blitz 360. O Blitz Ativa é acionado quando as fontes informam falta de créditos ou quando o orçamento diário configurado se esgota. Também pode ser iniciado manualmente.
 
 O serviço lê fontes HTTPS cadastradas, descobre links do mesmo domínio e consulta propostas abertas do PNCP. Guarda os resultados e o relatório em SQLite e oferece API autenticada para integração. Usa os módulos de normalização, análise de páginas e classificação de intenção já existentes no Blitz 360.
 
@@ -60,7 +60,27 @@ Publicações sem metadados empresariais estruturados ficam fora da qualificaç�
 
 O intervalo entre pedidos ao mesmo domínio é de pelo menos um segundo, respeitando `Crawl-delay` até 60 segundos. Fontes que exigem intervalo maior ficam registradas como bloqueadas para esta janela de execução. O limite do documento é 1,5 MB por resposta e o prazo de rede é de oito segundos.
 
-As chamadas a provedores pagos são zero neste módulo. Máquina, rede, energia, hospedagem, disponibilidade das fontes e manutenção determinam o custo operacional e a latência. A implantação de produção e a ligação à interface e ao CRM do Blitz 360 permanecem pendentes.
+As chamadas a provedores pagos são zero neste módulo. Máquina, rede, energia, hospedagem, disponibilidade das fontes e manutenção determinam o custo operacional e a latência.
+
+## Interface, CRM e alternativa automática
+
+A área `#blitz-ativa` do aplicativo usa a sessão Firebase existente. O navegador chama `/api/ativa`, que verifica o usuário antes de consultar o serviço com o segredo do backend. Configure `BLITZ_ATIVA_URL` com a origem HTTPS do serviço e `BLITZ_ATIVA_TOKEN` com o mesmo segredo nos ambientes do serviço e do Blitz 360. A URL e o segredo ficam no servidor.
+
+A interface oferece formulário de coleta, histórico, fontes cadastradas, quantidade de documentos indexados, evidências, relatórios e a ação Salvar no CRM. A gravação recupera os registros originais do serviço, verifica a conta e usa a transação de deduplicação do CRM. Registros com região pendente exigem revisão e têm a gravação automática desativada.
+
+O esgotamento explícito de créditos, HTTP 402, limite mensal insuficiente no Apify, orçamento diário e limite diário de consultas Serper acionam a alternativa. Erros de login, CAPTCHA, HTTP 403/429 e timeouts mantêm sua classificação de falha. Os provedores pagos continuam disponíveis nas próximas consultas, conforme seus limites. Chaves de repetição evitam duplicação da execução alternativa em retentativas dentro da janela de quinze minutos.
+
+## Índice de descoberta
+
+O catálogo e o índice são separados por conta. Cadastre até 200 fontes com nome, URL e palavras-chave. Elas podem apontar para páginas, RSS, Atom ou sitemaps XML. O coletor segue links do mesmo domínio dentro dos limites da execução. O texto de documentos acessíveis é indexado com SQLite FTS5. Uma nova consulta sugere até vinte fontes por correspondência de termos e faz nova leitura antes de qualificar pedidos. O índice retém até dez mil documentos por conta e usa documentos consultados nos últimos noventa dias para descoberta. Ele cobre as fontes percorridas, com ampliação gradual pelo catálogo.
+
+## Implantação persistente
+
+`blitz-ativa/render.yaml` descreve um serviço Node com disco de 1 GB montado em `/var/data`, banco em `/var/data/blitz.sqlite`, segredo gerado pela plataforma e verificação `/health`. A região proposta é Virginia. A integração à main, a seleção de workspace, a aprovação de despesas, o preenchimento das variáveis no Blitz 360 e a verificação de reinício em produção fazem parte da implantação.
+
+Em 21/11/2026, a referência pública do Render informa US$ 7/mês pelo plano `0.5c-512mb` e US$ 0,25/GB/mês pelo disco. A proposta mínima soma aproximadamente US$ 7,25/mês, além de eventuais tributos, tráfego excedente e custos do plano de workspace. O arquivo preparado não representa contratação ou implantação concluída. [Preços consultados](https://render.com/pricing.md)
+
+Para executar em máquina própria com volume persistente, use `docker compose -f blitz-ativa/compose.yaml up --build -d`, com `BLITZ_ATIVA_TOKEN` no ambiente. O serviço fica acessível no loopback da máquina. Uma implantação acessível pelo Blitz 360 hospedado exige origem HTTPS alcançável por esse backend. Preserve o volume `ativa-data` e faça backup consistente do SQLite por ferramenta nativa. O custo de infraestrutura depende da máquina e da operação escolhida.
 
 ## Referências verificadas
 

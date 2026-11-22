@@ -9,7 +9,7 @@ export async function crawl(options, {read = rawRead, delayMs = 1000, onPage = (
   const robots = new Map(), lastRequest = new Map();
   const visited = new Set(), queued = new Set(options.sources);
   const queue = options.sources.map(url => ({url, depth:0}));
-  const pages = [], records = new Map();
+  const pages = [], documents = [], records = new Map();
   async function pacedRead(url, minimum = delayMs) {
     const host = new URL(url).hostname;
     await sleep(Math.max(0, (lastRequest.get(host) || 0) + minimum - Date.now()));
@@ -61,6 +61,7 @@ export async function crawl(options, {read = rawRead, delayMs = 1000, onPage = (
         report.reason = result.blocked || '';
         report.discarded = result.discarded || {};
         report.contentHash = result.contentHash;
+        if (result.document) documents.push(result.document);
         for (const record of result.records) records.set(record.key, record);
         if (!result.blocked && next.depth < options.maxDepth)
           for (const link of result.links) {
@@ -79,5 +80,5 @@ export async function crawl(options, {read = rawRead, delayMs = 1000, onPage = (
     pages.push(report);
     await onPage({pages, records:[...records.values()], limited:queue.length > 0});
   }
-  return {pages, records:[...records.values()], limited:queue.length > 0 || pages.some(page => page.linkLimitReached)};
+  return {pages, documents, records:[...records.values()], limited:queue.length > 0 || pages.some(page => page.linkLimitReached)};
 }

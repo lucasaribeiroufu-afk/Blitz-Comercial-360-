@@ -14,7 +14,7 @@ while ((selected = store.claim())) {
   const heartbeat = setInterval(() => store.heartbeat(selected), 10000);
   try {
     const output = await run(selected.input);
-    store.finish(selected, output.records, output.report);
+    store.finish(selected, output.records, output.report, '', output.documents || []);
   } catch (error) {store.finish(selected, [], {state:'failed'}, error.message);}
   finally {clearInterval(heartbeat);}
   if (selected.id === queued.id) break;
