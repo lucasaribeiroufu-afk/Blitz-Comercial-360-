@@ -1,3 +1,4 @@
+import {embeddedRequest} from './ativaEmbedded.js';
 import {SearchError} from './verifiedSearch.js';
 import {mutateCrm} from './crm.js';
 import {createHash} from 'node:crypto';
@@ -10,7 +11,8 @@ export function quotaExhausted(reports = []) {
 export async function ativaRequest(path, userId, payload, deps = {}) {
   const endpoint = deps.ativaUrl ?? process.env.BLITZ_ATIVA_URL;
   const token = deps.ativaToken ?? process.env.BLITZ_ATIVA_TOKEN;
-  if (!endpoint || !token) throw new SearchError('Blitz Ativa ainda não configurado no servidor.', 503);
+  if (!endpoint) return embeddedRequest(path,userId,payload,deps);
+  if (!token) throw new SearchError('Configure o segredo do serviço Blitz Ativa.',503);
   let origin;
   try {origin = new URL(endpoint);} catch {throw new SearchError('BLITZ_ATIVA_URL inválida.', 503);}
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash)
@@ -44,12 +46,12 @@ export async function ativaRequest(path, userId, payload, deps = {}) {
 export async function ativaAction(body, deps = {}) {
   if (!deps.userId) throw new SearchError('Login obrigatório.', 401);
   const call = (path, payload) => ativaRequest(path, deps.userId, payload, deps);
-  if (body.action === 'status') return {configured:!!(process.env.BLITZ_ATIVA_URL && process.env.BLITZ_ATIVA_TOKEN)};
+  if (body.action === 'status') return {configured:true, mode:process.env.BLITZ_ATIVA_URL ? 'dedicated' : 'embedded'};
   if (body.action === 'list') return call('/v1/jobs');
   if (body.action === 'sources') return call('/v1/sources');
   if (body.action === 'addSource') return call('/v1/sources', body.source);
   if (body.action === 'start') return call('/v1/jobs', {
-    query:body.query, location:body.location, audience:body.audience, sources:body.sources || [], pncp:body.pncp !== false,
+    query:body.query, location:body.location, audience:body.audience, alternatives:body.alternatives, sources:body.sources || [], pncp:body.pncp !== false,
     maxPages:20, maxDepth:2, maxAgeDays:30, pncpPages:2,
     requestKey:body.requestKey,
   });
@@ -71,20 +73,20 @@ export async function ativaAction(body, deps = {}) {
 
 export async function attachAtivaFallback(result, body, deps = {}) {
   const report = result.meta?.executionReport;
-  if (deps.freeOnly || !quotaExhausted(report?.sources) || result.ativaJob) return result;
-  const source = {source:'Blitz Ativa · alternativa por esgotamento', kind:'content', consulted:false,
+  if (result.ativaJob) return result;
+  const source = {source:'Blitz Ativa · coleta própria', kind:'content', consulted:false,
     status:'blocked', received:0, qualified:0, errors:[], limits:[], providerCostUsd:0,
     discarded:{produto:0,vendedor:0,intencao_ausente:0,regiao_desconhecida:0,
       regiao_divergente:0,duplicidade:0,data:0,autor_ausente:0,fonte_invalida:0}};
   try {
     if (!deps.userId) throw Error('Sessão necessária para iniciar a alternativa.');
     const job = await (deps.startAtiva || ativaAction)({action:'start', query:body.query,
-      location:body.location, audience:body.audience || (body.intent === 'b2c_consumer' ? 'b2c' : body.intent === 'hybrid' ? 'both' : 'b2b'), sources:body.sourceUrls || [], pncp:true,
+      location:body.location, audience:body.audience || ((body.publicB2C || body.intent === 'b2c_consumer' || body.targetEntityType === 'pf') ? 'b2c' : body.intent === 'hybrid' ? 'both' : 'b2b'), sources:body.sourceUrls || [], pncp:true,
       requestKey:deps.ativaRequestKey ? `${deps.ativaRequestKey}-${Math.floor(Date.now()/900000)}` : undefined}, deps);
     result.ativaJob = {id:job.id};
     source.consulted = true; source.status = 'running';
-    source.limits.push('Serper e Apify preservados. Blitz Ativa iniciou uma fila própria por falta de orçamento ou créditos.');
-    result.meta.summary = 'Créditos ou orçamento esgotados. Blitz Ativa assumiu a coleta nas fontes próprias.';
+    source.limits.push('Fila própria independente do limite financeiro dos provedores pagos.');
+    result.meta.summary = 'Blitz Ativa iniciou a coleta nas fontes próprias.';
     report.state = 'running'; report.summary = result.meta.summary;
   } catch (error) {source.errors.push(error.message);}
   report.sources.push(source);

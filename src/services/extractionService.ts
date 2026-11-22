@@ -33,7 +33,7 @@ export async function searchB2CLeads(query: string, location: string, count=30, 
  if(data.ativaJob) {
   let fallback;
   for(let attempt=0;attempt<60;attempt++) {
-   onProgress?.('Blitz Ativa assumiu a coleta após esgotamento de créditos ou orçamento. A execução também está no histórico Blitz Ativa.');
+   onProgress?.('Blitz Ativa está coletando nas fontes próprias. A execução também está no histórico Blitz Ativa.');
    fallback=await ativaApi({action:'get',id:data.ativaJob.id});
    if(['finished','failed'].includes(fallback.status))break;
    await new Promise(resolve=>setTimeout(resolve,4000));

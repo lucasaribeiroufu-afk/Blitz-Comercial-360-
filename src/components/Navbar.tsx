@@ -16,8 +16,8 @@ interface NavbarProps {
   user: User;
   contactCount: number;
   onOpenSettings: () => void;
-  viewMode?: 'prospecting' | 'database' | 'ativa';
-  onNavigateView?: (mode: 'prospecting' | 'database' | 'ativa') => void;
+  viewMode?: 'prospecting' | 'database' | 'ativa' | 'audiences';
+  onNavigateView?: (mode: 'prospecting' | 'database' | 'ativa' | 'audiences') => void;
 }
 
 export function Navbar({ 
@@ -111,6 +111,8 @@ export function Navbar({
 
           <button type="button" onClick={() => onNavigateView?.('ativa')}
             className={`rounded-lg px-3 py-2 text-xs font-semibold ${viewMode === 'ativa' ? 'bg-teal-500 text-zinc-950' : 'bg-zinc-900 text-teal-300'}`}>Blitz Ativa</button>
+
+          <button type="button" onClick={() => onNavigateView?.('audiences')} className={`rounded-lg px-3 py-2 text-xs font-semibold ${viewMode === 'audiences' ? 'bg-teal-500 text-zinc-950' : 'bg-zinc-900 text-teal-300'}`}>Públicos de concorrentes</button>
 
           {/* API Settings Button */}
           <button
