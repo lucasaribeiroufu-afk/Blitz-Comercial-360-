@@ -12,7 +12,7 @@ export function demandSignal(text, query, alternatives = []) {
   if (!matched || /\b(vendo|vendemos|compre agora|faca seu pedido)\b/.test(normalized)) return null;
   const purchased = /\b(comprei|adquiri|paguei|uso|utilizo)\b/.test(normalized);
   let type;
-  if (purchased && /\b(nao gostei|nao funcionou|nao resolveu|decepcion|ruim|pessimo|escorrega)\b/.test(normalized)) type = 'negative_experience';
+  if (purchased && /\b(nao gostei|nao funcionou|nao resolveu|sem solucao|nao apresentou solucao|decepcion|ruim|pessimo|escorrega)\b/.test(normalized)) type = 'negative_experience';
   else if (purchased && /\b(gostei|funcionou|resolveu|recomendo|satisfeito|otimo)\b/.test(normalized)) type = 'positive_experience';
   else if (purchased) type = 'past_purchase';
   else if (/\b(qual (o )?preco|quanto custa|qual (o )?valor)\b/.test(normalized)) type = 'price_question';

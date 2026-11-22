@@ -76,6 +76,7 @@ export function AtivaPage() {
           <p className="text-xs text-zinc-400">Facebook e Instagram pelo Apify estão na busca principal. A coleta própria lê páginas públicas acessíveis com autor, data e pedido estruturados. Cadastre os links das fontes desejadas.</p>
           <label className="block space-y-1 text-sm">Produtos alternativos e soluções semelhantes<textarea className={inputClass} rows={3} value={alternatives} onChange={event=>setAlternatives(event.target.value)} placeholder="Um termo por linha. Exemplo para antiderrapante: tapete de borracha"/></label>
           <label className="block space-y-1 text-sm">URLs públicas adicionais<textarea className={inputClass} rows={3} value={urls} onChange={event=>setUrls(event.target.value)} placeholder="Uma URL HTTPS por linha. Páginas, feeds ou sitemap."/></label>
+          <a className="block text-sm text-teal-300 underline" href={`https://www.google.com/search?q=${encodeURIComponent(`site:reclameaqui.com.br "${query}" ${location === 'Brasil' ? '' : location} ("não resolvido" OR "não respondida" OR "sem solução")`)}`} target="_blank" rel="noreferrer">Descobrir reclamações públicas no Reclame Aqui</a>
           <p className="text-xs text-zinc-400">O índice inclui {documents} documentos da sua conta. Correspondências de termos sugerem fontes para uma nova leitura.</p>
           <button className={buttonClass} disabled={busy}>Iniciar coleta própria</button>
         </form>

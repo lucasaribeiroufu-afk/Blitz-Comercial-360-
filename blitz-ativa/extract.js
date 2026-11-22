@@ -61,8 +61,8 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     records.push(lead);
   }
   const observations = structured.filter(object => types(object).some(type =>
-    ['SocialMediaPosting','DiscussionForumPosting','Comment','Article','BlogPosting'].includes(type)))
-    .map(object => ({text:object.text || object.articleBody, author:object.author,
+    ['SocialMediaPosting','DiscussionForumPosting','Comment','Article','BlogPosting','Review'].includes(type)))
+    .map(object => ({text:object.text || object.articleBody || object.reviewBody, author:object.author,
       publishedAt:object.datePublished, url:object.url || object['@id']}));
   // An identified structured author is required for every qualified request.
   const discarded = {product_or_intent:0, date:0, author:0, region:0, url:0};
@@ -87,7 +87,7 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     const national = normalize(options.location) === 'brasil';
     if (!national && region.status === 'conflicting') {discarded.region++; continue;}
     const host = new URL(publication).hostname.replace(/^(www|m)\./, '');
-    const platform = ({'facebook.com':'facebook','instagram.com':'instagram','tiktok.com':'tiktok'})[host] || 'website';
+    const platform = ({'facebook.com':'facebook','instagram.com':'instagram','tiktok.com':'tiktok','reclameaqui.com.br':'reclame_aqui'})[host] || 'website';
     const intentEvidence = {...evidence(text, text), source:'Publicação pública estruturada'};
     records.push({key:identity(`publication:${publication}:${observation.author.name}:${text}`),
       recordType:national || region.matched ? assessment.type : 'region_unconfirmed',

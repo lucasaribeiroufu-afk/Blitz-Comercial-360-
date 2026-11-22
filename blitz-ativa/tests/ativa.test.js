@@ -206,3 +206,16 @@ test('alternative products preserve the observed subject and experience never im
   }
   assert.equal(extract(page(posting({text:'Vendo tapete de borracha.',author})),options.sources[0],input,now).records.length,0);
 });
+
+test('structured public complaint retains the consumer review and never takes SAC contact as consumer', () => {
+  const url = 'https://www.reclameaqui.com.br/fornecedor/reclamacao_123/';
+  const review = {'@type':'Review',author:{'@type':'Person',name:'Autor de teste'},
+    datePublished:'2026-11-20',url,reviewBody:'Comprei tinta impermeabilizante e não funcionou. Moro em Uberlândia MG.'};
+  const html = page(review) + '<p>Resposta do fabricante: telefone SAC 0800 111 2222</p>';
+  const record = extract(html,url,{...options,audience:'b2c'},now).records[0];
+  assert.equal(record.platform,'reclame_aqui');
+  assert.equal(record.recordType,'negative_experience');
+  assert.equal(record.phone,undefined);
+  assert.equal(record.evidence.intent.excerpt,review.reviewBody);
+  assert.equal(extract(page({...review,author:undefined}),url,{...options,audience:'b2c'},now).records.length,0);
+});
