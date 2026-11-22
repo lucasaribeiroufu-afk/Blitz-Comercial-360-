@@ -62,7 +62,7 @@ export async function discover(input, {read = rawRead, deadline = Infinity,
     }
   }
   const ranked = [...new Set(Array.from({length:20},(_,index)=>groups.map(group=>group[index])).flat().filter(Boolean))].slice(0,20);
-  return {sources:ranked,candidates:ranked.map(url=>candidates.get(url)),reports,
+  return {relevanceVersion:1,sources:ranked,candidates:ranked.map(url=>candidates.get(url)),reports,
     coverage:searxUrl ? 'Índice do SearXNG configurado, incluindo consultas por redes e experiências.' :
       'Índice público Mwmbl com cobertura limitada. Acesso anônimo sujeito à quota e disponibilidade do serviço. SearXNG próprio amplia as consultas.'};
 }
