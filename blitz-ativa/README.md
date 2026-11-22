@@ -54,7 +54,7 @@ Cada pedido preserva trecho, origem e data de consulta. Páginas HTML incluem ha
 
 ## Cobertura e limites atuais
 
-O rastreador parte das URLs cadastradas. A construção de um índice geral de descoberta e conectores adicionais permanece pendente. A API do PNCP é consultada em três modalidades, com páginas configuráveis, até três páginas de itens por edital, teto de 40 requisições e janela de 120 segundos. O relatório expõe cortes e falhas. Títulos genéricos também têm seus itens consultados, até os limites informados.
+Sem URLs, a consulta ativa descoberta automática por produto. O índice público Mwmbl fornece candidatos para leitura, sujeito à quota anônima e à cobertura disponível. Um resultado do índice guarda somente URL, título, consulta e propósito, sem qualificação de comprador. BLITZ_ATIVA_SEARXNG_URL aceita a origem HTTPS de uma instância SearXNG autorizada com formato JSON habilitado para ampliar a descoberta por redes e experiências. A ausência de resultados no índice não comprova ausência de compradores. A API do PNCP é consultada em três modalidades, com páginas configuráveis, até três páginas de itens por edital, teto de 40 requisições e janela de 120 segundos. O relatório expõe cortes e falhas. Títulos genéricos também têm seus itens consultados, até os limites informados.
 
 Publicações precisam de autor estruturado e identificado, como Organization ou Person, data recente, URL e pedido explícito correspondente ao produto. O campo audience aceita b2b, b2c ou both. Requisições antigas sem esse campo preservam b2b. A interface inicia com ambos selecionados. Em b2c, a consulta PNCP e as empresas potenciais ficam desativadas. Pessoas físicas entram apenas por pedido publicado, com entityType pf. O coletor próprio preserva o texto original como evidência e não extrai telefone ou e-mail de pessoas para campos de contato. Sites que dependem de JavaScript ainda precisam de um conector específico. `robots.txt`, login, CAPTCHA, HTTP 401/403/429 e falhas de acesso são tratados como bloqueios observáveis. Redirecionamentos passam pela verificação de domínio e de robots antes da próxima requisição. Endereços privados e credenciais em URL são bloqueados, e o DNS público é fixado na conexão.
 
@@ -97,11 +97,11 @@ A busca principal possui conectores Apify para grupos do Facebook, comentários 
 
 ## Alternativas e experiências publicadas
 
-A consulta aceita até doze termos em alternatives, configuráveis para qualquer produto. A interface oferece esse campo. Os termos são alternativas comerciais para pesquisa e exigem revisão de compatibilidade. A identificação de concorrentes e de alternativas ainda depende do operador. A descoberta semântica automática para qualquer produto e a expansão dos conectores sociais permanecem pendentes.
+A consulta aceita até doze termos em alternatives, configuráveis para qualquer produto. A interface oferece esse campo. Os termos são alternativas comerciais para pesquisa e exigem revisão de compatibilidade. A descoberta busca candidatos relacionados ao produto. O operador revisa quais deles são concorrentes e informa alternativas de aplicação. Equivalência técnica entre produtos exige documentação.
 
 O coletor próprio registra pedido atual, pergunta de preço, compra passada e experiência positiva ou negativa. Cada observação exige autor, data recente, URL e menção textual ao produto ou à alternativa. O preço só recebe campo próprio quando o autor declara quanto pagou. Experiências e perguntas ficam no histórico para revisão. A importação ao CRM continua limitada aos tipos já autorizados.
 
-A coleta própria configurada também pode iniciar sem erro de créditos nos caminhos de conclusão do radar. Seu acionamento não depende do limite financeiro das APIs pagas. Essa alteração não fornece hospedagem nem acesso às plataformas. As chamadas pagas continuam sujeitas ao orçamento. A implantação segue pendente de configuração de pagamento no Render.
+A coleta própria configurada também pode iniciar sem erro de créditos nos caminhos de conclusão do radar. Seu acionamento não depende do limite financeiro das APIs pagas. Essa alteração não fornece hospedagem nem acesso às plataformas. As chamadas pagas continuam sujeitas ao orçamento. O modo integrado funciona na infraestrutura existente. O serviço dedicado no Render é opcional.
 
 ## Reclame Aqui
 
@@ -109,6 +109,19 @@ A interface oferece descoberta manual por produto e região no Reclame Aqui. URL
 
 ## Execução integrada ao Blitz
 
-Quando BLITZ_ATIVA_URL não está configurada, a API usa o coletor HTTP próprio no ambiente do Blitz e guarda catálogo e execuções no Firestore já utilizado pelo aplicativo. Esse modo precisa das credenciais Firebase existentes. As buscas são iniciadas pelo usuário e executam até três páginas e trinta registros em uma janela de quarenta segundos. O relatório registra cobertura parcial e fontes bloqueadas. Não usa PNCP nem o índice SQLite dedicado. A contratação de Render passa a ser opcional para esse modo. Cotas de execução, rede e Firestore da infraestrutura continuam aplicáveis.
+Quando BLITZ_ATIVA_URL não está configurada, a API usa o coletor HTTP próprio no ambiente do Blitz e guarda catálogo e execuções no Firestore já utilizado pelo aplicativo. Esse modo precisa das credenciais Firebase existentes. As buscas são iniciadas pelo usuário e executam até doze páginas e cinquenta registros em uma janela de quarenta segundos. O relatório registra cobertura parcial e fontes bloqueadas. Não usa PNCP nem o índice SQLite dedicado. A contratação de Render passa a ser opcional para esse modo. Cotas de execução, rede e Firestore da infraestrutura continuam aplicáveis.
 
-A nova área Públicos de concorrentes organiza produto, região, segmento, projetos e publicações para coleta com os conectores existentes. Oferece atalhos de descoberta manual e revisão dos pedidos antes de salvar no CRM. O vídeo de referência mostra Mailerfind conectado ao Claude por MCP. Mailerfind exige conta, autorização e créditos próprios. Essa conexão externa não foi criada. O módulo próprio não extrai automaticamente seguidores e não infere compra a partir dessa relação. Cobertura social ampla, descoberta automática de concorrentes e leitura contextual de comentários permanecem em desenvolvimento.
+A nova área Públicos de concorrentes organiza produto, região, segmento, projetos e publicações para coleta com os conectores existentes. Oferece atalhos de descoberta manual e revisão dos pedidos antes de salvar no CRM. O vídeo de referência mostra Mailerfind conectado ao Claude por MCP. Mailerfind exige conta, autorização e créditos próprios. Essa conexão externa não foi criada. O módulo próprio não extrai automaticamente seguidores e não infere compra a partir dessa relação. A descoberta automática inicial e a interpretação contextual estão disponíveis. A cobertura social ampla continua dependente dos índices e dos conectores de cada plataforma.
+
+## Descoberta e comentários contextuais
+
+A interface inicia a descoberta automática mesmo quando recebe links opcionais. A API e a CLI ativam a descoberta por padrão quando a entrada está sem fontes. `discover: true` também amplia consultas com fontes informadas. As URLs efetivamente lidas no modo integrado entram no catálogo da conta para reutilização. O histórico registra candidatos e falhas de descoberta.
+
+O modo sem chave consulta o índice Mwmbl com até duas pesquisas por execução e intervalo de 1,1 segundo. O serviço publica limite anônimo de 1.000 requisições mensais por IP. Um HTTP 429 interrompe a descoberta. Seu índice pode retornar zero fontes para produtos brasileiros. Isso limita a cobertura comercial desta configuração. A instância SearXNG configurada executa até quatro pesquisas por produto, região, redes e experiências. Sua operação e seus mecanismos também têm limites próprios.
+
+Comentários JSON-LD aninhados e microdados Schema.org são interpretados junto à publicação pai quando a relação está explícita na página. Respostas curtas como “quero comprar esse produto” preservam texto, autor, data e evidência do contexto, recebem `reviewRequired: true` e dependem de revisão. Perguntas de preço e experiências mantêm categorias próprias. Contexto com vários produtos pesquisados é tratado como ambíguo. A cidade e a data do anúncio não são atribuídas ao comentarista. Páginas ligadas a redes sociais em conteúdo relacionado ao produto entram na fila limitada e passam pelo controle de acesso e robots de cada domínio.
+
+Documentação consultada
+
+- https://developer.mwmbl.org/
+- https://docs.searxng.org/dev/search_api.html

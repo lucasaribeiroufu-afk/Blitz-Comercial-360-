@@ -4,9 +4,9 @@ import {ativaApi} from '../services/ativaApi';
 type Source = {url:string; label:string; keywords:string};
 type RecordRow = {key:string; name:string; recordType:string; intent?:string; profileUrl:string;
   entityType?:string; platform?:string; phone?:string; email?:string; publishedAt?:string; location?:string; proposalDeadline?:string;
-  evidence?:Record<string,{excerpt?:string; sourceUrl?:string}>};
+  reviewRequired?:boolean; evidence?:Record<string,{excerpt?:string; sourceUrl?:string}>};
 type Job = {id:string; status:string; input:{query:string; location:string}; records:RecordRow[];
-  report?:{state:string; reports:Array<{url?:string; source?:string; status:string; reason?:string}>}; error?:string};
+  report?:{state:string; coverage?:string; discovery?:{coverage?:string;candidates:Array<{url:string;title:string;purpose:string}>}; reports:Array<{url?:string; source?:string; status:string; reason?:string}>}; error?:string};
 const inputClass = 'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white';
 const buttonClass = 'rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-50';
 const label = (type:string) => ({purchase_mention:'Pedido publicado',potential_company:'Empresa potencial', past_purchase:'Compra passada', positive_experience:'Experiência positiva', negative_experience:'Experiência negativa', price_question:'Pergunta sobre preço',
@@ -44,7 +44,7 @@ export function AtivaPage() {
   async function execute(event:FormEvent) {
     event.preventDefault(); setBusy(true); setError(''); setNotice('');
     try {
-      const job = await ativaApi({action:'start', query, location, audience, alternatives:alternatives.split('\n').map(term=>term.trim()).filter(Boolean), pncp:audience !== 'b2c',
+      const job = await ativaApi({action:'start', query, location, audience, alternatives:alternatives.split('\n').map(term=>term.trim()).filter(Boolean), pncp:audience !== 'b2c', discover:true,
         sources:urls.split('\n').map(url => url.trim()).filter(Boolean), requestKey:crypto.randomUUID()});
       setActive(await ativaApi({action:'get',id:job.id})); await refresh();
     } catch (err:any) {setError(err.message);} finally {setBusy(false);}
@@ -62,7 +62,7 @@ export function AtivaPage() {
   return <section className="mx-auto max-w-7xl space-y-6 px-4 py-8 text-zinc-100 sm:px-6">
     <div><p className="text-sm font-semibold text-teal-400">Blitz Ativa</p>
       <h1 className="mt-1 text-3xl font-bold tracking-tight">Fontes próprias e pedidos de compra</h1>
-      <p className="mt-2 max-w-3xl text-sm text-zinc-400">Serper e Apify continuam na prospecção principal. A coleta própria usa fontes cadastradas. O modo integrado guarda histórico no Firestore e consulta até 3 páginas por execução. O serviço dedicado amplia o índice e habilita PNCP. Você também pode iniciar uma coleta aqui.</p></div>
+      <p className="mt-2 max-w-3xl text-sm text-zinc-400">Digite o produto e a região para descobrir fontes automaticamente. A coleta consulta até 12 páginas públicas por execução e salva o histórico. A cobertura depende do índice de descoberta e do acesso oferecido por cada site.</p></div>
     {error && <div role="alert" className="rounded-lg border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200">{error}</div>}
     {notice && <p role="status" className="rounded-lg bg-teal-950 p-3 text-sm text-teal-200">{notice}</p>}
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">
@@ -73,17 +73,20 @@ export function AtivaPage() {
             <label className="space-y-1 text-sm">Região<input className={inputClass} required value={location} onChange={event=>setLocation(event.target.value)} placeholder="Brasil ou Cidade, UF"/></label>
           </div>
           <label className="block space-y-1 text-sm">Público<select className={inputClass} value={audience} onChange={event=>setAudience(event.target.value)}><option value="both">Empresas e pessoas físicas</option><option value="b2b">Empresas</option><option value="b2c">Pessoas físicas</option></select></label>
-          <p className="text-xs text-zinc-400">Facebook e Instagram pelo Apify estão na busca principal. A coleta própria lê páginas públicas acessíveis com autor, data e pedido estruturados. Cadastre os links das fontes desejadas.</p>
+          <p className="text-xs text-zinc-400">O motor procura fontes sobre o produto e candidatos a concorrentes. Comentários com autor e data podem usar o contexto da publicação original. Fontes adicionais são opcionais.</p>
           <label className="block space-y-1 text-sm">Produtos alternativos e soluções semelhantes<textarea className={inputClass} rows={3} value={alternatives} onChange={event=>setAlternatives(event.target.value)} placeholder="Um termo por linha. Exemplo para antiderrapante: tapete de borracha"/></label>
-          <label className="block space-y-1 text-sm">URLs públicas adicionais<textarea className={inputClass} rows={3} value={urls} onChange={event=>setUrls(event.target.value)} placeholder="Uma URL HTTPS por linha. Páginas, feeds ou sitemap."/></label>
+          <label className="block space-y-1 text-sm">URLs públicas adicionais (opcional)<textarea className={inputClass} rows={3} value={urls} onChange={event=>setUrls(event.target.value)} placeholder="Uma URL HTTPS por linha. Páginas, feeds ou sitemap."/></label>
           <a className="block text-sm text-teal-300 underline" href={`https://www.google.com/search?q=${encodeURIComponent(`site:reclameaqui.com.br "${query}" ${location === 'Brasil' ? '' : location} ("não resolvido" OR "não respondida" OR "sem solução")`)}`} target="_blank" rel="noreferrer">Descobrir reclamações públicas no Reclame Aqui</a>
-          <p className="text-xs text-zinc-400">O índice inclui {documents} documentos da sua conta. Correspondências de termos sugerem fontes para uma nova leitura.</p>
+          <p className="text-xs text-zinc-400">O índice inclui {documents} documentos da sua conta. Fontes descobertas ficam registradas no relatório de cada execução.</p>
           <button className={buttonClass} disabled={busy}>Iniciar coleta própria</button>
         </form>
         {active && <div className="border-t border-zinc-800 pt-5">
           <div className="flex flex-wrap items-center justify-between gap-3"><h2 className="text-lg font-semibold">{active.input.query}</h2>
             <span className="text-sm text-teal-300">{active.status} {active.report?.state && `· ${active.report.state}`}</span></div>
           <p className="mt-1 text-sm text-zinc-400">{active.input.location}</p>
+          {active.report?.coverage && <p className="mt-2 text-xs text-zinc-400">{active.report.coverage}</p>}
+          {active.report?.discovery?.coverage && <p className="mt-2 text-xs text-zinc-400">{active.report.discovery.coverage}</p>}
+          {!!active.report?.discovery?.candidates.length && <details className="mt-3 text-sm"><summary>Fontes descobertas ({active.report.discovery.candidates.length})</summary><ul className="mt-2 space-y-2">{active.report.discovery.candidates.map(item=><li key={item.url}><a href={item.url} target="_blank" rel="noreferrer" className="text-teal-300 underline">{item.title || item.url}</a><span className="block text-xs text-zinc-400">Candidato para leitura · {item.purpose}</span></li>)}</ul></details>}
           {active.error && <p role="alert" className="mt-3 text-amber-300">{active.error}</p>}
           <button type="button" className="mt-3 text-sm text-teal-300 underline" onClick={()=>ativaApi({action:'get',id:active.id}).then(setActive).catch(err=>setError(err.message))}>Atualizar execução</button>
           {active.status === 'finished' && !active.records.length && <p className="mt-4 text-sm text-zinc-400">Esta execução não qualificou registros. Consulte as fontes e limitações abaixo.</p>}
@@ -91,6 +94,7 @@ export function AtivaPage() {
             <p className="text-xs font-semibold text-teal-300">{label(row.recordType)}{row.entityType === 'pf' ? ' · Pessoa física' : ''}{row.platform && ` · ${row.platform}`}</p><h3 className="mt-1 font-semibold">{row.name}</h3>
             <p className="mt-1 text-xs text-zinc-400">{row.location} {row.publishedAt && `· Publicado em ${new Date(row.publishedAt).toLocaleDateString('pt-BR')}`}</p>
             <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{row.intent || row.evidence?.name?.excerpt}</p>
+            {row.reviewRequired && <div className="mt-2 rounded-lg border border-amber-800 p-3 text-xs text-amber-200"><p>Interpretação contextual. Revise a publicação e o comentário antes de abordar.</p><p className="mt-2 whitespace-pre-wrap">{row.evidence?.context?.excerpt}</p></div>}
             {(row.phone || row.email) && <p className="mt-2 text-sm">{[row.phone,row.email].filter(Boolean).join(' · ')}</p>}
             {row.proposalDeadline && <p className="mt-2 text-xs text-amber-200">Prazo publicado {new Date(row.proposalDeadline).toLocaleString('pt-BR')}</p>}
             <div className="mt-4 flex gap-4">{/^https:\/\//.test(row.profileUrl) && <a className="text-sm text-teal-300 underline" href={row.profileUrl} target="_blank" rel="noreferrer">Conferir fonte</a>}

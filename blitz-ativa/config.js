@@ -17,8 +17,9 @@ export function config(input) {
     return value;
   };
   if (input.pncp !== undefined && typeof input.pncp !== 'boolean') throw Error('pncp deve ser booleano.');
-  if (!urls.length && !input.pncp) throw Error('Informe fontes ou ative PNCP.');
-  return {query:input.query.trim(), location, audience, alternatives:[...new Set(alternatives.map(term => term.trim()))], sources:urls, pncp:input.pncp === true,
+  if (input.discover !== undefined && typeof input.discover !== 'boolean') throw Error('discover deve ser booleano.');
+  if (!urls.length && !input.pncp && input.discover === false) throw Error('Informe fontes ou ative descoberta automática.');
+  return {query:input.query.trim(), location, audience, alternatives:[...new Set(alternatives.map(term => term.trim()))], sources:urls, discover:input.discover ?? !urls.length, pncp:input.pncp === true,
     maxPages:limit('maxPages', 20, 100), maxDepth:limit('maxDepth', 2, 3),
     maxAgeDays:limit('maxAgeDays', 30, 365), pncpPages:limit('pncpPages', 2, 5)};
 }
