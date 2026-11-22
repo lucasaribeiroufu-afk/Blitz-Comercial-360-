@@ -119,3 +119,16 @@ test('background dispatcher resumes the job in the original account and persists
   const second=await sweepSchedules({headers:{authorization:`Bearer ${secret}`}},deps);
   assert.equal(second.newRecords,0);
 });
+
+test('resuming legacy queues refreshes discovery before requesting unrelated pending domains',async()=>{
+  const queryInput={...input,discover:true,sources:[]};
+  const old={input:queryInput,records:[],progress:{seen:[],pending:['https://sports.example/schedule'],batches:1,pages:1},
+    report:{discovery:{sources:['https://sports.example/'],candidates:[],reports:[]},reports:[]}};
+  const result=await collectAtivaBatch(old,{ativaDiscover:async()=>({relevanceVersion:1,sources:['https://paint.example/'],candidates:[],reports:[]}),
+    ativaYoutube:emptyYoutube,ativaCrawl:async options=>{
+      assert.deepEqual(options.sources,['https://paint.example/']);
+      return {records:[],pages:[{url:options.sources[0],status:'collected'}],pending:[],limited:false};
+    }});
+  assert.equal(result.job.report.discovery.relevanceVersion,1);
+  assert.equal(result.job.status,'finished');
+});
