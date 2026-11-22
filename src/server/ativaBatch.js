@@ -1,3 +1,4 @@
+import {productRelevant} from '../../blitz-ativa/relevance.js';
 import {crawl} from '../../blitz-ativa/crawler.js';
 import {discover} from '../../blitz-ativa/discovery.js';
 import {rawRead} from '../../blitz-ativa/http.js';
@@ -43,5 +44,6 @@ export async function collectAtivaBatch(job, deps = {}) {
   while (Buffer.byteLength(JSON.stringify(result)) > 850000 && result.records.length) {
     result.records.pop();result.report.recordLimitReached=true;result.report.state='partial';
   }
-  return {job:result,observed:output.pages.filter(page=>page.status === 'collected').map(page=>page.url)};
+  const relevant = new Set((output.documents || []).filter(document=>productRelevant(`${document.title} ${document.body}`,input)).map(document=>document.url));
+  return {job:result,observed:output.pages.filter(page=>page.status === 'collected' && relevant.has(page.url)).map(page=>page.url)};
 }

@@ -12,7 +12,7 @@ export async function embeddedRequest(path, userId, payload, deps = {}) {
   const catalog = root.collection('ativaConfig').doc('catalog');
   if (path === '/v1/sources') {
     const current = (await catalog.get()).data()?.sources || [];
-    if (!payload) return {sources:current,indexedDocuments:0};
+    if (!payload) return {sources:current.filter(source=>!source.discoveredAt || source.verifiedProductContext),indexedDocuments:0};
     const source = {url:canonicalUrl(payload.url),label:String(payload.label || '').trim(),keywords:String(payload.keywords || '').trim()};
     if (!source.label || source.label.length > 120 || source.keywords.length > 500) throw new SearchError('Fonte inválida.',400);
     return db.runTransaction(async transaction => {
@@ -39,7 +39,7 @@ export async function embeddedRequest(path, userId, payload, deps = {}) {
     if (payload.requestKey !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(payload.requestKey)) throw new SearchError('Chave de repetição inválida.',400);
     const sources = (await catalog.get()).data()?.sources || [];
     const terms = normalize(payload.query).split(' ').filter(word=>word.length > 2);
-    const selected = sources.filter(source=>terms.some(term=>normalize(source.keywords).includes(term))).map(source=>source.url);
+    const selected = sources.filter(source=>(!source.discoveredAt || source.verifiedProductContext) && terms.some(term=>normalize(source.keywords).includes(term))).map(source=>source.url);
     input = config({...payload,pncp:true,discover:payload.discover ?? !(payload.sources || []).length,
       sources:[...new Set([...(payload.sources || []),...selected])].slice(0,20)});
     id = payload.requestKey ? createHash('sha256').update(payload.requestKey).digest('hex').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/,'$1-$2-$3-$4-$5') : randomUUID();
@@ -62,9 +62,12 @@ export async function embeddedRequest(path, userId, payload, deps = {}) {
     if (output.observed.length) await db.runTransaction(async transaction=>{
       const current = (await transaction.get(catalog)).data()?.sources || [];
       const known = new Set(current.map(source=>source.url));
+      const observed = new Set(output.observed);
+      const updated = current.map(source=>source.discoveredAt && observed.has(source.url)
+        ? {...source,verifiedProductContext:true} : source);
       const additions = output.observed.filter(url=>!known.has(url)).map(url=>({url,label:new URL(url).hostname,
-        keywords:input.query,discoveredAt:new Date().toISOString()}));
-      transaction.set(catalog,{sources:[...current,...additions].slice(0,200)});
+        keywords:input.query,verifiedProductContext:true,discoveredAt:new Date().toISOString()}));
+      transaction.set(catalog,{sources:[...updated,...additions].slice(0,200)});
     });
   } catch (error) {job.status='failed';job.error=error.message;job.leaseUntil=0;}
   return db.runTransaction(async transaction=>{

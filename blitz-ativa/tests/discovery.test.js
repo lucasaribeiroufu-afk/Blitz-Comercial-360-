@@ -102,3 +102,12 @@ test('authenticated SearXNG receives the session while the anonymous index never
   await discover(input,{maxQueries:1,searxUrl:'',authToken:'fixture',read});
   assert.equal(calls[1].options.authorization,undefined);
 });
+
+test('search-engine drift cannot queue unrelated sources even when the engine returns them',async()=>{
+  const result=await discover(input,{maxQueries:1,searxUrl:'https://search.example/',read:async()=>({status:200,body:JSON.stringify({results:[
+    {url:'https://sports.example/schedule',title:'Dallas football schedule',content:'Games and tickets'},
+    {url:'https://paint.example/impermeabilizantes',title:'Tintas impermeabilizantes',content:'Revestimentos'},
+  ]})})});
+  assert.deepEqual(result.sources,['https://paint.example/impermeabilizantes']);
+  assert.equal(result.reports[0].discardedIrrelevant,1);
+});

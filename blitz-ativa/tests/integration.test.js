@@ -121,7 +121,7 @@ test('embedded collector persists jobs by account, retries idempotently and excl
   let calls = 0;
   const deps = {ativaDb:db,ativaCrawl:async input=>{
     calls++;assert.equal(input.maxPages,12);
-    return {records:[],pages:[{status:'collected',url:input.sources[0]}],limited:false};
+    return {records:[],pages:[{status:'collected',url:input.sources[0]}],documents:[{url:input.sources[0],title:'tinta',body:'tinta'}],limited:false};
   }};
   const payload = {query:'tinta',audience:'b2c',sources:['https://public.example/'],requestKey:'same'};
   const first = await embeddedRequest('/v1/jobs','alice',payload,deps);

@@ -5,6 +5,7 @@ import {normalize, parsePage, validCnpj} from '../src/server/verifiedSearch.js';
 import {canonicalUrl} from './config.js';
 import {demandSignal, contextualSignal} from './signals.js';
 import {observations as collectObservations} from './observations.js';
+import {productRelevant} from './relevance.js';
 
 const types = object => [object?.['@type']].flat();
 const isOrganization = object => types(object).some(type => ['Organization','Corporation','LocalBusiness',
@@ -26,8 +27,7 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
   // Arbitrary mailto links or comment text cannot supply corporate contact fields.
   const parsed = parsePage(html);
   const structured = parsed.records;
-  const pageWords = normalize([parsed.title,parsed.text,...parsed.blocks].join(' ')).split(' ');
-  const productOnPage = normalize(options.query).split(' ').every(word=>pageWords.includes(word));
+  const productOnPage = productRelevant([parsed.title,parsed.text,...parsed.blocks].join(' '),options);
   const audience = options.audience || 'b2b';
   for (const organization of structured.filter(isOrganization).filter(() => audience !== 'b2c')) {
     if (options.discover && !productOnPage) continue;
@@ -119,6 +119,6 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
           target.pathname !== '/' && !/\b(sharer|share|login|signin|intent)\b/i.test(target.pathname)) socialLinks.push(url);
     } catch { /* Non-HTTP navigation is outside the crawl queue. */ }
   });
-  return {records, links:[...new Set(links)], socialLinks:[...new Set(socialLinks)].slice(0,8), discarded, contentHash:digest,
+  return {records, links:options.discover && !productOnPage ? [] : [...new Set(links)], socialLinks:[...new Set(socialLinks)].slice(0,8), discarded, contentHash:digest,
     document:{url:sourceUrl, title:title.slice(0, 300), body:parsed.text.slice(0, 24000), fetchedAt:retrievedAt}};
 }
