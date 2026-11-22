@@ -2,7 +2,7 @@ import {useEffect, useState, type FormEvent} from 'react';
 import {ativaApi} from '../services/ativaApi';
 
 type Source = {url:string; label:string; keywords:string};
-type RecordRow = {key:string; name:string; recordType:string; intent?:string; profileUrl:string; authorProfileUrl?:string;
+type RecordRow = {key:string; name:string; recordType:string; intent?:string; profileUrl:string; authorProfileUrl?:string; parentPublicationUrl?:string;
   entityType?:string; platform?:string; phone?:string; email?:string; publishedAt?:string; location?:string; proposalDeadline?:string;
   reviewRequired?:boolean; evidence?:Record<string,{excerpt?:string; sourceUrl?:string}>};
 type Job = {id:string; status:string; input:{query:string; location:string}; progress?:{pages:number;batches:number;pending:string[]}; records:RecordRow[];
@@ -77,9 +77,16 @@ export function AtivaPage() {
     try {await ativaApi({action:'saveToCrm',id:active!.id,keys:[row.key]}); setNotice(`${row.name} salvo no CRM com evidências.`);}
     catch (err:any) {setError(err.message);} finally {setSaving(null);}
   }
-  const youtubeSignals = active?.records.filter(row=>row.platform === 'youtube') || [];
-  const youtubeCandidate = ['purchase_mention','repurchase_interest','price_question','positive_experience','product_reaction']
-    .map(type=>youtubeSignals.find(row=>row.recordType === type)).find(Boolean);
+  const signalPriority = ['purchase_mention','repurchase_interest','price_question','positive_experience','product_reaction'];
+  const bestByPublication = new Map<string, RecordRow>();
+  for (const type of signalPriority) {
+    for (const row of active?.records || []) {
+      if (row.recordType !== type || !row.platform || row.platform === 'website') continue;
+      const publication = row.parentPublicationUrl || row.profileUrl;
+      if (!bestByPublication.has(publication)) bestByPublication.set(publication, row);
+    }
+  }
+  const highlightedComments = new Set([...bestByPublication.values()].map(row=>row.key));
 
   return <section className="mx-auto max-w-7xl space-y-6 px-4 py-8 text-zinc-100 sm:px-6">
     <div><p className="text-sm font-semibold text-teal-400">Blitz Ativa</p>
@@ -117,15 +124,15 @@ export function AtivaPage() {
           <button type="button" className="mt-3 text-sm text-teal-300 underline" onClick={()=>ativaApi({action:'get',id:active.id}).then(setActive).catch(err=>setError(err.message))}>Atualizar execução</button>
           {active.status === 'finished' && !active.records.length && <p className="mt-4 text-sm text-zinc-400">Esta execução não qualificou registros. Consulte as fontes e limitações abaixo.</p>}
           <div className="mt-4 space-y-3">{active.records.map(row=><article key={row.key} className="rounded-xl border border-zinc-700 p-4">
-            {row.key === youtubeCandidate?.key && <p className="mb-2 text-xs font-semibold text-teal-300">Comentário do YouTube para revisar primeiro</p>}
+            {highlightedComments.has(row.key) && <p className="mb-2 text-xs font-semibold text-teal-300">Comentário prioritário desta publicação</p>}
             <p className="text-xs font-semibold text-teal-300">{label(row.recordType)}{row.entityType === 'pf' ? ' · Pessoa física' : ''}{row.platform && ` · ${row.platform}`}</p><h3 className="mt-1 font-semibold">{row.name}</h3>
             <p className="mt-1 text-xs text-zinc-400">{row.location} {row.publishedAt && `· Publicado em ${new Date(row.publishedAt).toLocaleDateString('pt-BR')}`}</p>
             <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{row.intent || row.evidence?.name?.excerpt}</p>
             {row.reviewRequired && <div className="mt-2 rounded-lg border border-amber-800 p-3 text-xs text-amber-200"><p>Interpretação contextual. Revise a publicação e o comentário antes de abordar.</p><p className="mt-2 whitespace-pre-wrap">{row.evidence?.context?.excerpt}</p></div>}
             {(row.phone || row.email) && <p className="mt-2 text-sm">{[row.phone,row.email].filter(Boolean).join(' · ')}</p>}
             {row.proposalDeadline && <p className="mt-2 text-xs text-amber-200">Prazo publicado {new Date(row.proposalDeadline).toLocaleString('pt-BR')}</p>}
-            <div className="mt-4 flex gap-4">{/^https:\/\//.test(row.profileUrl) && <a className="text-sm text-teal-300 underline" href={row.profileUrl} target="_blank" rel="noreferrer">{row.platform === 'youtube' ? 'Ver comentário' : 'Conferir fonte'}</a>}
-              {row.platform === 'youtube' && /^https:\/\//.test(row.authorProfileUrl || '') && <a className="text-sm text-teal-300 underline" href={row.authorProfileUrl} target="_blank" rel="noreferrer">Canal do autor</a>}
+            <div className="mt-4 flex gap-4">{/^https:\/\//.test(row.profileUrl) && <a className="text-sm text-teal-300 underline" href={row.profileUrl} target="_blank" rel="noreferrer">{row.authorProfileUrl ? 'Ver comentário' : 'Conferir fonte'}</a>}
+              {/^https:\/\//.test(row.authorProfileUrl || '') && <a className="text-sm text-teal-300 underline" href={row.authorProfileUrl} target="_blank" rel="noreferrer">{row.platform === 'youtube' ? 'Canal do autor' : 'Perfil do autor'}</a>}
               <button className="text-sm text-teal-300 disabled:text-zinc-500" disabled={saving !== null || !['purchase_mention','potential_company'].includes(row.recordType)} onClick={()=>save(row)}>Salvar no CRM</button></div>
           </article>)}</div>
           {!!active.report?.reports?.length && <details className="mt-5 text-sm"><summary className="cursor-pointer text-zinc-300">Fontes, bloqueios e limites</summary>
