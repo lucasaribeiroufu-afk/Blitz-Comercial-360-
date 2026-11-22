@@ -94,3 +94,11 @@ O coletor desta versão usa HTTP direto e as bibliotecas já instaladas no proje
 ## Canais B2C
 
 A busca principal possui conectores Apify para grupos do Facebook, comentários do Instagram e TikTok, sujeitos a configuração, créditos e acesso. O coletor próprio aceita URLs dessas plataformas e de outros sites quando a página pública acessível oferece publicação estruturada. Reconhece a plataforma pelo domínio. Sites que apresentam somente conteúdo dinâmico ou exigem login precisam do conector correspondente. Uma fonte bloqueada aparece no relatório. A ampliação B2C foi validada com publicações de teste, com coleta social real e implantação ainda pendentes.
+
+## Alternativas e experiências publicadas
+
+A consulta aceita até doze termos em alternatives, configuráveis para qualquer produto. A interface oferece esse campo. Os termos são alternativas comerciais para pesquisa e exigem revisão de compatibilidade. A identificação de concorrentes e de alternativas ainda depende do operador. A descoberta semântica automática para qualquer produto e a expansão dos conectores sociais permanecem pendentes.
+
+O coletor próprio registra pedido atual, pergunta de preço, compra passada e experiência positiva ou negativa. Cada observação exige autor, data recente, URL e menção textual ao produto ou à alternativa. O preço só recebe campo próprio quando o autor declara quanto pagou. Experiências e perguntas ficam no histórico para revisão. A importação ao CRM continua limitada aos tipos já autorizados.
+
+A coleta própria configurada também pode iniciar sem erro de créditos nos caminhos de conclusão do radar. Seu acionamento não depende do limite financeiro das APIs pagas. Essa alteração não fornece hospedagem nem acesso às plataformas. As chamadas pagas continuam sujeitas ao orçamento. A implantação segue pendente de configuração de pagamento no Render.

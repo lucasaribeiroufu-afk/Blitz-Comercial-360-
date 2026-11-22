@@ -1,8 +1,9 @@
 import {createHash} from 'node:crypto';
 import {load} from 'cheerio';
-import {intentAssessment, declaredRegion} from '../src/server/purchaseIntent.js';
+import {declaredRegion} from '../src/server/purchaseIntent.js';
 import {normalize, parsePage, validCnpj} from '../src/server/verifiedSearch.js';
 import {canonicalUrl} from './config.js';
+import {demandSignal} from './signals.js';
 
 const types = object => [object?.['@type']].flat();
 const isOrganization = object => types(object).some(type => ['Organization','Corporation','LocalBusiness',
@@ -68,8 +69,8 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
   for (const observation of observations) {
     if (typeof observation.text !== 'string') continue;
     const text = observation.text.slice(0, 12000);
-    const assessment = intentAssessment(text, options.query);
-    if (!assessment.qualified) {discarded.product_or_intent++; continue;}
+    const assessment = demandSignal(text, options.query, options.alternatives);
+    if (!assessment) {discarded.product_or_intent++; continue;}
     const published = Date.parse(observation.publishedAt);
     if (!Number.isFinite(published) || published > now || now - published > options.maxAgeDays * 86400000) {
       discarded.date++; continue;
@@ -89,12 +90,15 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     const platform = ({'facebook.com':'facebook','instagram.com':'instagram','tiktok.com':'tiktok'})[host] || 'website';
     const intentEvidence = {...evidence(text, text), source:'Publicação pública estruturada'};
     records.push({key:identity(`publication:${publication}:${observation.author.name}:${text}`),
-      recordType:national || region.matched ? 'purchase_mention' : 'region_unconfirmed',
+      recordType:national || region.matched ? assessment.type : 'region_unconfirmed',
+      geographicStatus:national || region.matched ? 'matched' : 'unconfirmed',
+      category:assessment.type,
+      prospectingBasis:assessment.relation === 'alternative' ? 'Sinal sobre alternativa informada. Compatibilidade comercial depende de revisão.' : 'Publicação sobre o produto pesquisado.',
       name:observation.author.name, profileUrl:publication, platform, intent:text,
       entityType:corporate ? 'pj' : 'pf',
-      matchedProduct:options.query, publishedAt:new Date(published).toISOString(),
+      matchedProduct:assessment.matchedProduct, reportedPrice:assessment.reportedPrice, publishedAt:new Date(published).toISOString(),
       location:region.authorDeclared || '', verificationStatus:'source_observed',
-      classification:'heuristic_purchase_intent', evidence:{intent:intentEvidence}});
+      classification:assessment.classification, evidence:{intent:intentEvidence}});
   }
   // Discover one-hop publications referenced by RSS/Atom and ordinary same-host HTML links.
   const links = [];

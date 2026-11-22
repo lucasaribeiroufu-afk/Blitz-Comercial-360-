@@ -9,7 +9,7 @@ type Job = {id:string; status:string; input:{query:string; location:string}; rec
   report?:{state:string; reports:Array<{url?:string; source?:string; status:string; reason?:string}>}; error?:string};
 const inputClass = 'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white';
 const buttonClass = 'rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-50';
-const label = (type:string) => ({purchase_mention:'Pedido publicado',potential_company:'Empresa potencial',
+const label = (type:string) => ({purchase_mention:'Pedido publicado',potential_company:'Empresa potencial', past_purchase:'Compra passada', positive_experience:'Experiência positiva', negative_experience:'Experiência negativa', price_question:'Pergunta sobre preço',
   region_unconfirmed:'Região pendente'}[type] || type);
 
 export function AtivaPage() {
@@ -17,6 +17,7 @@ export function AtivaPage() {
   const [location, setLocation] = useState('Uberlândia, MG');
   const [audience, setAudience] = useState('both');
   const [urls, setUrls] = useState('');
+  const [alternatives, setAlternatives] = useState('');
   const [sources, setSources] = useState<Source[]>([]);
   const [source, setSource] = useState<Source>({url:'',label:'',keywords:''});
   const [jobs, setJobs] = useState<Array<{id:string;status:string;input:Job['input']}>>([]);
@@ -43,7 +44,7 @@ export function AtivaPage() {
   async function execute(event:FormEvent) {
     event.preventDefault(); setBusy(true); setError(''); setNotice('');
     try {
-      const job = await ativaApi({action:'start', query, location, audience, pncp:audience !== 'b2c',
+      const job = await ativaApi({action:'start', query, location, audience, alternatives:alternatives.split('\n').map(term=>term.trim()).filter(Boolean), pncp:audience !== 'b2c',
         sources:urls.split('\n').map(url => url.trim()).filter(Boolean), requestKey:crypto.randomUUID()});
       setActive(await ativaApi({action:'get',id:job.id})); await refresh();
     } catch (err:any) {setError(err.message);} finally {setBusy(false);}
@@ -73,6 +74,7 @@ export function AtivaPage() {
           </div>
           <label className="block space-y-1 text-sm">Público<select className={inputClass} value={audience} onChange={event=>setAudience(event.target.value)}><option value="both">Empresas e pessoas físicas</option><option value="b2b">Empresas</option><option value="b2c">Pessoas físicas</option></select></label>
           <p className="text-xs text-zinc-400">Facebook e Instagram pelo Apify estão na busca principal. A coleta própria lê páginas públicas acessíveis com autor, data e pedido estruturados. Cadastre os links das fontes desejadas.</p>
+          <label className="block space-y-1 text-sm">Produtos alternativos e soluções semelhantes<textarea className={inputClass} rows={3} value={alternatives} onChange={event=>setAlternatives(event.target.value)} placeholder="Um termo por linha. Exemplo para antiderrapante: tapete de borracha"/></label>
           <label className="block space-y-1 text-sm">URLs públicas adicionais<textarea className={inputClass} rows={3} value={urls} onChange={event=>setUrls(event.target.value)} placeholder="Uma URL HTTPS por linha. Páginas, feeds ou sitemap."/></label>
           <p className="text-xs text-zinc-400">O índice inclui {documents} documentos da sua conta. Correspondências de termos sugerem fontes para uma nova leitura.</p>
           <button className={buttonClass} disabled={busy}>Iniciar coleta própria</button>
@@ -91,7 +93,7 @@ export function AtivaPage() {
             {(row.phone || row.email) && <p className="mt-2 text-sm">{[row.phone,row.email].filter(Boolean).join(' · ')}</p>}
             {row.proposalDeadline && <p className="mt-2 text-xs text-amber-200">Prazo publicado {new Date(row.proposalDeadline).toLocaleString('pt-BR')}</p>}
             <div className="mt-4 flex gap-4">{/^https:\/\//.test(row.profileUrl) && <a className="text-sm text-teal-300 underline" href={row.profileUrl} target="_blank" rel="noreferrer">Conferir fonte</a>}
-              <button className="text-sm text-teal-300 disabled:text-zinc-500" disabled={saving !== null || row.recordType === 'region_unconfirmed'} onClick={()=>save(row)}>Salvar no CRM</button></div>
+              <button className="text-sm text-teal-300 disabled:text-zinc-500" disabled={saving !== null || !['purchase_mention','potential_company'].includes(row.recordType)} onClick={()=>save(row)}>Salvar no CRM</button></div>
           </article>)}</div>
           {!!active.report?.reports?.length && <details className="mt-5 text-sm"><summary className="cursor-pointer text-zinc-300">Fontes, bloqueios e limites</summary>
             <ul className="mt-3 space-y-2">{active.report.reports.map((item,index)=><li key={index} className="break-words text-zinc-400">{item.url || item.source} · {item.status} {item.reason}</li>)}</ul></details>}

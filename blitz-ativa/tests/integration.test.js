@@ -99,3 +99,11 @@ test('authenticated proxy queues, polls and imports original worker evidence int
     await assert.rejects(()=>ativaAction({action:'saveToCrm',id:job.id,keys:['unknown']},deps), /indisponível/);
   } finally {await app.stop();store.close();}
 });
+
+test('own collection can run without a paid quota failure or financial budget', async () => {
+  const result = {leads:[],meta:{executionReport:{sources:[],state:'unavailable'}}};
+  const output = await attachAtivaFallback(result,{query:'tinta',location:'Brasil'}, {
+    userId:'alice',freeOnly:true,startAtiva:async()=>({id:'own-free-run'})
+  });
+  assert.equal(output.ativaJob.id,'own-free-run');
+});

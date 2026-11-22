@@ -45,7 +45,7 @@ test('seller, completed purchase, undated and personal publications never become
     {text:'Já comprei tinta impermeabilizante. Entrega em Uberlândia MG.'},
     {datePublished:undefined}, {datePublished:'2020-01-01'}, {datePublished:'2030-01-01'},
     {author:{'@type':'Person', name:'Pessoa de teste'}}, {url:'https://elsewhere.example/post'},
-  ]) assert.equal(extract(page(posting(change)), options.sources[0], options, now).records.length, 0);
+  ]) assert.equal(extract(page(posting(change)), options.sources[0], options, now).records.filter(record => record.recordType === 'purchase_mention').length, 0);
 });
 
 test('region absent is retained as unconfirmed and divergent region is discarded', () => {
@@ -172,7 +172,7 @@ test('B2C qualifies an identified public request and keeps contact details out o
   for (const change of [{author:undefined},{datePublished:undefined},
     {text:'Vendo tinta impermeabilizante em Uberlândia MG.'},
     {text:'Já comprei tinta impermeabilizante em Uberlândia MG.'}]) {
-    assert.equal(extract(page({...post,...change}), options.sources[0], b2c, now).records.length, 0);
+    assert.equal(extract(page({...post,...change}), options.sources[0], b2c, now).records.filter(record => record.recordType === 'purchase_mention').length, 0);
   }
   assert.throws(() => config({...options,audience:'everyone'}), /Público/);
 });
@@ -186,4 +186,23 @@ test('B2C labels the observed social platform and skips corporate procurement', 
   });
   assert.equal(result.report.state,'unavailable');
   assert.equal(result.records.length,0);
+});
+
+test('alternative products preserve the observed subject and experience never implies current purchase', () => {
+  const input = {...options, audience:'b2c', alternatives:['tapete de borracha']};
+  const author = {'@type':'Person',name:'Autor de teste'};
+  for (const [text,type] of [
+    ['Comprei tapete de borracha e não gostei. Moro em Uberlândia MG.','negative_experience'],
+    ['Uso tapete de borracha e gostei. Moro em Uberlândia MG.','positive_experience'],
+    ['Paguei R$ 300,00 no tapete de borracha. Moro em Uberlândia MG.','past_purchase'],
+    ['Qual o preço do tapete de borracha? Moro em Uberlândia MG.','price_question'],
+    ['Preciso comprar tapete de borracha. Moro em Uberlândia MG.','purchase_mention'],
+  ]) {
+    const record = extract(page(posting({text,author})),options.sources[0],input,now).records[0];
+    assert.equal(record.recordType,type);
+    assert.equal(record.matchedProduct,'tapete de borracha');
+    assert.equal(record.evidence.intent.excerpt,text);
+    if (type === 'past_purchase') assert.equal(record.reportedPrice,'R$ 300,00');
+  }
+  assert.equal(extract(page(posting({text:'Vendo tapete de borracha.',author})),options.sources[0],input,now).records.length,0);
 });
