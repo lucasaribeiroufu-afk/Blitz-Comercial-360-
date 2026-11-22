@@ -120,7 +120,7 @@ test('embedded collector persists jobs by account, retries idempotently and excl
   })};
   let calls = 0;
   const deps = {ativaDb:db,ativaCrawl:async input=>{
-    calls++;assert.equal(input.maxPages,3);
+    calls++;assert.equal(input.maxPages,12);
     return {records:[],pages:[{status:'collected',url:input.sources[0]}],limited:false};
   }};
   const payload = {query:'tinta',audience:'b2c',sources:['https://public.example/'],requestKey:'same'};

@@ -21,7 +21,7 @@ const posting = (overrides = {}) => ({'@type':'DiscussionForumPosting',
 const page = object => `<html><script type="application/ld+json">${JSON.stringify(object)}</script></html>`;
 
 test('configuration rejects credentials and invalid limits', () => {
-  assert.throws(() => config({query:'x', sources:[]}), /fontes/);
+  assert.throws(() => config({query:'x', sources:[],discover:false}), /fontes/);
   assert.throws(() => config({...options, maxPages:1000}), /Limite/);
   assert.throws(() => canonicalUrl('https://public.example/?api_key=secret'), /credencial/);
   assert.equal(canonicalUrl('https://public.example/post?utm_source=x#fragment'), 'https://public.example/post');

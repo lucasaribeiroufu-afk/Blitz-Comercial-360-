@@ -50,6 +50,7 @@ export async function crawl(options, {read = rawRead, delayMs = 1000, deadline =
     throw Error('limite_de_redirecionamentos');
   }
   while (queue.length && pages.length < options.maxPages) {
+    if (Date.now()+100 >= deadline) break;
     const next = queue.shift();
     if (visited.has(next.url)) continue;
     visited.add(next.url);
@@ -66,9 +67,12 @@ export async function crawl(options, {read = rawRead, delayMs = 1000, deadline =
         if (result.document) documents.push(result.document);
         for (const record of result.records) records.set(record.key, record);
         if (!result.blocked && next.depth < options.maxDepth)
-          for (const link of result.links) {
+          for (const link of [...(result.socialLinks || []),...result.links]) {
             if (queued.size >= options.maxPages * 5) {report.linkLimitReached = true; break;}
-            if (!queued.has(link)) {queued.add(link); queue.push({url:link, depth:next.depth + 1});}
+            if (!queued.has(link)) {
+              hosts.add(new URL(link).hostname);
+              queued.add(link); queue.push({url:link, depth:next.depth + 1});
+            }
           }
         break;
       } catch (error) {

@@ -3,7 +3,8 @@ import {load} from 'cheerio';
 import {declaredRegion} from '../src/server/purchaseIntent.js';
 import {normalize, parsePage, validCnpj} from '../src/server/verifiedSearch.js';
 import {canonicalUrl} from './config.js';
-import {demandSignal} from './signals.js';
+import {demandSignal, contextualSignal} from './signals.js';
+import {observations as collectObservations} from './observations.js';
 
 const types = object => [object?.['@type']].flat();
 const isOrganization = object => types(object).some(type => ['Organization','Corporation','LocalBusiness',
@@ -23,7 +24,8 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
   const evidence = (value, excerpt = value) => ({value, excerpt, sourceUrl, retrievedAt, contentHash:digest, source:'Página pública empresarial'});
   // Organization identity and its contact belong to the same structured object.
   // Arbitrary mailto links or comment text cannot supply corporate contact fields.
-  const structured = parsePage(html).records;
+  const parsed = parsePage(html);
+  const structured = parsed.records;
   const audience = options.audience || 'b2b';
   for (const organization of structured.filter(isOrganization).filter(() => audience !== 'b2c')) {
     if (typeof organization.name !== 'string' || !organization.name.trim() || typeof organization.url !== 'string') continue;
@@ -60,16 +62,16 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     }
     records.push(lead);
   }
-  const observations = structured.filter(object => types(object).some(type =>
-    ['SocialMediaPosting','DiscussionForumPosting','Comment','Article','BlogPosting','Review'].includes(type)))
-    .map(object => ({text:object.text || object.articleBody || object.reviewBody, author:object.author,
-      publishedAt:object.datePublished, url:object.url || object['@id']}));
+  const observations = collectObservations(structured,$);
   // An identified structured author is required for every qualified request.
   const discarded = {product_or_intent:0, date:0, author:0, region:0, url:0};
   for (const observation of observations) {
     if (typeof observation.text !== 'string') continue;
     const text = observation.text.slice(0, 12000);
-    const assessment = demandSignal(text, options.query, options.alternatives);
+    let contextUrl;
+    try {contextUrl = canonicalUrl(observation.contextUrl || sourceUrl);} catch {contextUrl = '';}
+    const context = contextUrl && new URL(contextUrl).origin === new URL(sourceUrl).origin ? observation.context : '';
+    const assessment = demandSignal(text, options.query, options.alternatives) || contextualSignal(text,context,options.query,options.alternatives);
     if (!assessment) {discarded.product_or_intent++; continue;}
     const published = Date.parse(observation.publishedAt);
     if (!Number.isFinite(published) || published > now || now - published > options.maxAgeDays * 86400000) {
@@ -98,18 +100,24 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
       entityType:corporate ? 'pj' : 'pf',
       matchedProduct:assessment.matchedProduct, reportedPrice:assessment.reportedPrice, publishedAt:new Date(published).toISOString(),
       location:region.authorDeclared || '', verificationStatus:'source_observed',
-      classification:assessment.classification, evidence:{intent:intentEvidence}});
+      classification:assessment.classification, reviewRequired:assessment.reviewRequired || false,
+      evidence:{intent:intentEvidence,...(assessment.reviewRequired ? {context:{...evidence(context),sourceUrl:contextUrl}} : {})}});
   }
   // Discover one-hop publications referenced by RSS/Atom and ordinary same-host HTML links.
-  const links = [];
+  const links = [], socialLinks = [];
+  const pageWords = normalize([parsed.text,...parsed.blocks].join(' ')).split(' ');
+  const productOnPage = normalize(options.query).split(' ').every(word=>pageWords.includes(word));
   $('a[href],item link,entry link,url loc,sitemap loc').each((_index, element) => {
     const node = $(element);
     try {
       const url = canonicalUrl(new URL(node.attr('href') || node.text().trim(), sourceUrl).href);
       if (new URL(url).origin === new URL(sourceUrl).origin &&
           !/\.(pdf|jpg|png|jpeg|zip|mp4|css|js)$/i.test(new URL(url).pathname)) links.push(url);
+      const target = new URL(url);
+      if (productOnPage && /(^|\.)(instagram\.com|facebook\.com|tiktok\.com|youtube\.com|reclameaqui\.com\.br)$/.test(target.hostname) &&
+          target.pathname !== '/' && !/\b(sharer|share|login|signin|intent)\b/i.test(target.pathname)) socialLinks.push(url);
     } catch { /* Non-HTTP navigation is outside the crawl queue. */ }
   });
-  return {records, links:[...new Set(links)], discarded, contentHash:digest,
-    document:{url:sourceUrl, title:title.slice(0, 300), body:parsePage(html).text.slice(0, 24000), fetchedAt:retrievedAt}};
+  return {records, links:[...new Set(links)], socialLinks:[...new Set(socialLinks)].slice(0,8), discarded, contentHash:digest,
+    document:{url:sourceUrl, title:title.slice(0, 300), body:parsed.text.slice(0, 24000), fetchedAt:retrievedAt}};
 }

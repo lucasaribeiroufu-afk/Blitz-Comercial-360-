@@ -51,7 +51,7 @@ export async function ativaAction(body, deps = {}) {
   if (body.action === 'sources') return call('/v1/sources');
   if (body.action === 'addSource') return call('/v1/sources', body.source);
   if (body.action === 'start') return call('/v1/jobs', {
-    query:body.query, location:body.location, audience:body.audience, alternatives:body.alternatives, sources:body.sources || [], pncp:body.pncp !== false,
+    query:body.query, location:body.location, audience:body.audience, alternatives:body.alternatives, discover:body.discover, sources:body.sources || [], pncp:body.pncp !== false,
     maxPages:20, maxDepth:2, maxAgeDays:30, pncpPages:2,
     requestKey:body.requestKey,
   });

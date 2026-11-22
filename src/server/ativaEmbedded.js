@@ -3,6 +3,7 @@ import {getServerFirestore} from './radarStore.js';
 import {config, canonicalUrl} from '../../blitz-ativa/config.js';
 import {crawl} from '../../blitz-ativa/crawler.js';
 import {rawRead} from '../../blitz-ativa/http.js';
+import {discover} from '../../blitz-ativa/discovery.js';
 import {normalize, SearchError} from './verifiedSearch.js';
 
 const clean = value => JSON.parse(JSON.stringify(value));
@@ -38,7 +39,7 @@ export async function embeddedRequest(path, userId, payload, deps = {}) {
   const sources = (await catalog.get()).data()?.sources || [];
   const terms = normalize(payload.query).split(' ').filter(word=>word.length > 2);
   const selected = sources.filter(source=>terms.some(term=>normalize(source.keywords).includes(term))).map(source=>source.url);
-  const input = config({...payload,pncp:true,sources:[...new Set([...(payload.sources || []),...selected])].slice(0,20)});
+  const input = config({...payload,pncp:true,discover:payload.discover ?? !(payload.sources || []).length,sources:[...new Set([...(payload.sources || []),...selected])].slice(0,20)});
   const id = payload.requestKey ? createHash('sha256').update(payload.requestKey).digest('hex').replace(/^(.{8})(.{4})(.{4})(.{4})(.{12}).*$/,'$1-$2-$3-$4-$5') : randomUUID();
   const ref = jobs.doc(id);
   const now = Date.now();
@@ -51,15 +52,27 @@ export async function embeddedRequest(path, userId, payload, deps = {}) {
   if (existing) return existing;
   try {
     const deadline = Math.min(Date.now()+40000,deps.deadline || Infinity);
-    const output = await (deps.ativaCrawl || crawl)({...input,maxPages:3,maxDepth:1}, {
+    const discovery = input.discover ? await (deps.ativaDiscover || discover)(input,{
+      deadline:Math.min(deadline-10000,Date.now()+12000),read:deps.ativaRead || rawRead,
+    }) : {sources:[],candidates:[],reports:[]};
+    const collectedSources = [...new Set([...input.sources,...discovery.sources])].slice(0,20);
+    const output = await (deps.ativaCrawl || crawl)({...input,sources:collectedSources,maxPages:12,maxDepth:1}, {
       deadline, read:url=>rawRead(url,{timeout:Math.max(1,Math.min(6000,deadline-Date.now()))})
     });
-    const reports = output.pages;
+    const reports = [...discovery.reports,...output.pages];
     const limited = output.limited || reports.some(page=>page.status !== 'collected');
-    job.status = 'finished';job.records = output.records.slice(0,30);
-    job.report = {state:reports.some(page=>page.status==='collected') ? limited ? 'partial' : 'complete' : 'unavailable',
-      reports,paidProviderCalls:0,generatedAt:new Date().toISOString(),
-      coverage:'Coleta própria no Blitz. Até 3 páginas por execução e 30 registros. Catálogo e histórico no Firestore. Índice amplo e PNCP disponíveis no serviço dedicado.'};
+    job.status = 'finished';job.records = output.records.slice(0,50);
+    job.report = {state:output.pages.some(page=>page.status==='collected') ? limited ? 'partial' : 'complete' : 'unavailable',
+      discovery,reports,paidProviderCalls:0,generatedAt:new Date().toISOString(),
+      coverage:'Descoberta por produto e coleta própria de até 12 páginas e 50 registros dentro da janela de 40 segundos. Cobertura sujeita ao índice, quotas e acesso público das fontes.'};
+    const observed = output.pages.filter(page=>page.status === 'collected').map(page=>page.url);
+    if (observed.length) await db.runTransaction(async transaction=>{
+      const current = (await transaction.get(catalog)).data()?.sources || [];
+      const known = new Set(current.map(source=>source.url));
+      const additions = observed.filter(url=>!known.has(url)).map(url=>({url,label:new URL(url).hostname,
+        keywords:input.query,discoveredAt:new Date().toISOString()}));
+      transaction.set(catalog,{sources:[...current,...additions].slice(0,200)});
+    });
   } catch (error) {job.status='failed';job.error=error.message;}
   await ref.set(clean(job));return clean(job);
 }
