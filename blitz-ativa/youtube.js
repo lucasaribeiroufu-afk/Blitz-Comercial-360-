@@ -5,13 +5,14 @@ function videoId(raw) {
     const url = new URL(raw);
     if (url.protocol !== 'https:' || url.username || url.password) return '';
     const host = url.hostname.replace(/^www\./,'');
-    const id = host === 'youtu.be' ? url.pathname.slice(1) : host === 'youtube.com' ? url.searchParams.get('v') : '';
+    const id = host === 'youtu.be' ? url.pathname.slice(1) : ['youtube.com','m.youtube.com'].includes(host) ? (url.searchParams.get('v') || url.pathname.match(/^\/(?:shorts|live|embed)\/([\w-]{11})\/?$/)?.[1]) : '';
     return /^[\w-]{11}$/.test(id || '') ? id : '';
   } catch {return '';}
 }
 
-export async function collectYoutube(input, {youtubeKey = process.env.YOUTUBE_API_KEY, fetcher = fetch, deadline = Infinity} = {}) {
-  const reports = [], rows = [];
+export async function collectYoutube(input, {youtubeKey = process.env.YOUTUBE_API_KEY, fetcher = fetch, deadline = Infinity, pending} = {}) {
+  const reports = [], records = new Map();
+  let queue = pending ? structuredClone(pending) : [];
   if (!youtubeKey) return {records:[],reports:[{source:'YouTube API',status:'not_configured',reason:'Configure YOUTUBE_API_KEY no servidor para ler vídeos e comentários públicos.'}]};
   let requests = 0;
   async function call(resource, params) {
@@ -28,34 +29,61 @@ export async function collectYoutube(input, {youtubeKey = process.env.YOUTUBE_AP
     return JSON.parse(body);
   }
   try {
-    let ids = [...new Set(input.sources.map(videoId).filter(Boolean))].slice(0,3);
-    if (!ids.length) {
-      const result = await call('search',{part:'snippet',q:input.query,type:'video',maxResults:3,relevanceLanguage:'pt',safeSearch:'moderate'});
-      ids = (result.items || []).map(item=>item.id?.videoId).filter(id=>/^[\w-]{11}$/.test(id || ''));
+    if (!pending) {
+      let ids = [...new Set(input.sources.map(videoId).filter(Boolean))].slice(0,3);
+      if (!ids.length) {
+        const result = await call('search',{part:'snippet',q:input.query,type:'video',maxResults:3,relevanceLanguage:'pt',safeSearch:'moderate',...(input.location?.toLowerCase() === 'brasil' ? {regionCode:'BR'} : {})});
+        ids = (result.items || []).map(item=>item.id?.videoId).filter(id=>/^[\w-]{11}$/.test(id || ''));
+      }
+      if (!ids.length) return {records:[],reports:[{source:'YouTube API',status:'collected',received:0,requests}]};
+      const videos = await call('videos',{part:'snippet',id:ids.join(',')});
+      queue = (videos.items || []).map(video=>({
+        id:video.id,
+        context:[video.snippet?.title,video.snippet?.description].filter(Boolean).join('\n').slice(0,12000),
+        pageToken:'', received:0, replies:[],
+      }));
     }
-    if (!ids.length) return {records:[],reports:[{source:'YouTube API',status:'collected',received:0,requests}]};
-    const videos = await call('videos',{part:'snippet',id:ids.join(',')});
-    for (const video of videos.items || []) {
+    while (queue.length && requests < 12 && Date.now()+6000 < deadline) {
+      const video = queue[0];
       const sourceUrl = `https://www.youtube.com/watch?v=${video.id}`;
-      const report = {source:'YouTube API',url:sourceUrl,status:'running',received:0};
-      reports.push(report);
+      const reply = video.replies[0];
+      const pageToken = reply ? reply.pageToken : video.pageToken;
       try {
-        const result = await call('commentThreads',{part:'snippet',videoId:video.id,maxResults:100,order:'time',textFormat:'plainText'});
-        for (const thread of result.items || []) {
-          const comment = thread.snippet?.topLevelComment;
+        const result = await call(reply ? 'comments' : 'commentThreads',{
+          part:'snippet', ...(reply ? {parentId:reply.id} : {videoId:video.id,order:'time'}),
+          maxResults:100,textFormat:'plainText',...(pageToken ? {pageToken} : {}),
+        });
+        const items = result.items || [];
+        const rows = [];
+        for (const item of items) {
+          const comment = reply ? item : item.snippet?.topLevelComment;
           const snippet = comment?.snippet;
-          if (!snippet?.authorDisplayName || !snippet.authorChannelUrl || !comment.id) continue;
+          if (!comment?.id) continue;
+          if (!reply && item.snippet.totalReplyCount > 0) video.replies.push({id:comment.id,pageToken:''});
+          if (!snippet?.authorDisplayName || !snippet.authorChannelUrl) continue;
           rows.push({text:snippet.textOriginal || snippet.textDisplay,name:snippet.authorDisplayName,
             authorUrl:snippet.authorChannelUrl,sourceUrl:`${sourceUrl}&lc=${encodeURIComponent(comment.id)}`,
-            publishedAt:snippet.publishedAt,platform:'youtube',
-            context:[video.snippet?.title,video.snippet?.description].filter(Boolean).join('\n').slice(0,12000),
+            publishedAt:snippet.publishedAt,platform:'youtube',context:video.context,
             contextUrl:sourceUrl,collector:'YouTube Data API v3 — comentário público'});
         }
-        report.received = result.items?.length || 0;
-        report.status = result.nextPageToken ? 'limited' : 'collected';
-        if (result.nextPageToken) report.reason = 'Primeira página de até 100 comentários por vídeo. Respostas e páginas adicionais permanecem fora desta amostra.';
-      } catch (error) {report.status='blocked';report.reason=error.message;}
+        for (const record of socialEvidence(rows,input)) records.set(record.key,record);
+        video.received += items.length;
+        if (reply) {
+          if (result.nextPageToken) reply.pageToken = result.nextPageToken;
+          else video.replies.shift();
+        } else {
+          video.pageToken = result.nextPageToken || '';
+          video.threadsComplete = !result.nextPageToken;
+        }
+        if (video.threadsComplete && !video.replies.length) {
+          reports.push({source:'YouTube API',url:sourceUrl,status:'collected',received:video.received});
+          queue.shift();
+        }
+      } catch (error) {
+        reports.push({source:'YouTube API',url:sourceUrl,status:'blocked',received:video.received,reason:error.message});
+        queue.shift();
+      }
     }
   } catch (error) {reports.push({source:'YouTube API',status:'failed',reason:error.message});}
-  return {records:socialEvidence(rows,input),reports,requests};
+  return {records:[...records.values()],reports,requests,pending:queue};
 }
