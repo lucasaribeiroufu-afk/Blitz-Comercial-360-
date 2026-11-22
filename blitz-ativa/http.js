@@ -13,15 +13,7 @@ export function rawRead(raw, {timeout = 8000, maxBytes = 1500000} = {}) {
     const request = https.get(url, {
       headers:{'User-Agent':userAgent, Accept:'text/html,application/xhtml+xml,application/rss+xml,application/atom+xml,application/json,text/plain'},
       // Pin the verified public address in the connection to prevent DNS rebinding.
-      lookup(hostname, _options, callback) {
-        const host = hostname.replace(/^\[|\]$/g, '');
-        const resolution = net.isIP(host) ? Promise.resolve([{address:host, family:net.isIP(host)}]) : dns.lookup(host, {all:true});
-        resolution.then(addresses => {
-          if (!addresses.length || addresses.some(item => !publicIp(item.address)))
-            return callback(Error('Endereço privado ou reservado bloqueado.'));
-          callback(null, addresses[0].address, addresses[0].family);
-        }, callback);
-      },
+      lookup:publicLookup,
     }, response => {
       if (response.statusCode !== 200) {
         response.resume();
@@ -45,4 +37,15 @@ export function rawRead(raw, {timeout = 8000, maxBytes = 1500000} = {}) {
     request.on('error', reject);
     request.on('close', () => clearTimeout(timer));
   });
+}
+
+export function publicLookup(hostname, options, callback) {
+  const host = hostname.replace(/^\[|\]$/g, '');
+  const resolution = net.isIP(host) ? Promise.resolve([{address:host, family:net.isIP(host)}]) : dns.lookup(host, {all:true});
+  resolution.then(addresses => {
+    if (!addresses.length || addresses.some(item => !publicIp(item.address)))
+      return callback(Error('Endereço privado ou reservado bloqueado.'));
+    if (options?.all) callback(null,addresses);
+    else callback(null,addresses[0].address,addresses[0].family);
+  },callback);
 }
