@@ -26,8 +26,11 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
   // Arbitrary mailto links or comment text cannot supply corporate contact fields.
   const parsed = parsePage(html);
   const structured = parsed.records;
+  const pageWords = normalize([parsed.title,parsed.text,...parsed.blocks].join(' ')).split(' ');
+  const productOnPage = normalize(options.query).split(' ').every(word=>pageWords.includes(word));
   const audience = options.audience || 'b2b';
   for (const organization of structured.filter(isOrganization).filter(() => audience !== 'b2c')) {
+    if (options.discover && !productOnPage) continue;
     if (typeof organization.name !== 'string' || !organization.name.trim() || typeof organization.url !== 'string') continue;
     let website;
     try {website = canonicalUrl(organization.url);} catch {continue;}
@@ -105,8 +108,6 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
   }
   // Discover one-hop publications referenced by RSS/Atom and ordinary same-host HTML links.
   const links = [], socialLinks = [];
-  const pageWords = normalize([parsed.text,...parsed.blocks].join(' ')).split(' ');
-  const productOnPage = normalize(options.query).split(' ').every(word=>pageWords.includes(word));
   $('a[href],item link,entry link,url loc,sitemap loc').each((_index, element) => {
     const node = $(element);
     try {

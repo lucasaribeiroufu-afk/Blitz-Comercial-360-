@@ -130,4 +130,10 @@ test('embedded collector persists jobs by account, retries idempotently and excl
   assert.equal(calls,1);
   await assert.rejects(embeddedRequest(`/v1/jobs/${first.id}`,'bob',undefined,deps),/inexistente/);
   await embeddedRequest('/v1/jobs','bob',payload,deps);assert.equal(calls,2);
+  deps.ativaDiscover=async()=>({sources:['https://discovered.example/'],candidates:[],reports:[{status:'collected',source:'Test index'}]});
+  const automatic=await embeddedRequest('/v1/jobs','carol',{query:'tinta',sources:[],requestKey:'auto'},deps);
+  assert.equal(automatic.status,'finished');
+  assert.equal(automatic.input.discover,true);
+  const catalog=await embeddedRequest('/v1/sources','carol',undefined,deps);
+  assert.equal(catalog.sources[0].url,'https://discovered.example/');
 });

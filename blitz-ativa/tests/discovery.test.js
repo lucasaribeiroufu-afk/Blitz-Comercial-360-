@@ -78,10 +78,17 @@ test('social links expand only product-related pages and remain behind destinati
   const calls=[];
   const result=await crawl({...input,sources:['https://public.example/'],maxPages:3,maxDepth:1},{delayMs:0,read:async url=>{
     calls.push(url);
-    if(url === 'https://www.instagram.com/robots.txt') return {status:200,body:'User-agent: *\\nDisallow: /'.replace('\\n','\n'),headers:{}};
+    if(url === 'https://www.instagram.com/robots.txt') return {status:200,body:`User-agent: *\nDisallow: /`,headers:{}};
     if(url.endsWith('/robots.txt')) return {status:200,body:'',headers:{}};
     return {status:200,body:'<p>Tinta impermeabilizante</p><a href="https://www.instagram.com/publicbrand/">Marca</a>',headers:{}};
   }});
   assert.equal(calls.includes('https://www.instagram.com/publicbrand/'),false);
   assert.ok(result.pages.some(page=>page.status === 'blocked'));
+});
+
+
+test('unrelated indexed organizations do not become prospects for the requested product',()=>{
+  const organization={'@type':'Organization',name:'Outro segmento',url:'https://public.example/'};
+  assert.equal(extract(html(organization)+'<p>Posto de gasolina</p>','https://public.example/',input,now).records.length,0);
+  assert.equal(extract(html(organization)+'<p>Tinta impermeabilizante</p>','https://public.example/',input,now).records.length,1);
 });
