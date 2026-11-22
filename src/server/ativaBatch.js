@@ -1,3 +1,4 @@
+import {productRelevant} from '../../blitz-ativa/relevance.js';
 import {crawl} from '../../blitz-ativa/crawler.js';
 import {discover} from '../../blitz-ativa/discovery.js';
 import {rawRead} from '../../blitz-ativa/http.js';
@@ -9,10 +10,16 @@ export async function collectAtivaBatch(job, deps = {}) {
   const input = job.input;
   const previous = job.progress || {seen:[],pending:[],batches:0,pages:0};
   const deadline = Math.min(Date.now()+40000,deps.deadline || Infinity);
-  const discovery = job.report?.discovery || (input.discover ? await (deps.ativaDiscover || discover)(input,{
+  const refreshDiscovery = input.discover && job.report?.discovery && job.report.discovery.relevanceVersion !== 1;
+  const discovery = (!refreshDiscovery && job.report?.discovery) || (input.discover ? await (deps.ativaDiscover || discover)(input,{
     deadline:Math.min(deadline-10000,Date.now()+22000),read:deps.ativaRead || rawRead,authToken:deps.authToken,
   }) : {sources:[],candidates:[],reports:[]});
-  const sources = previous.batches ? previous.pending : [...new Set([...input.sources,...discovery.sources])];
+  let sources = previous.batches ? previous.pending : [...new Set([...input.sources,...discovery.sources])];
+  if (refreshDiscovery) {
+    const origins = new Set([...input.sources,...discovery.sources].map(url=>new URL(url).origin));
+    sources = [...new Set([...sources.filter(url=>origins.has(new URL(url).origin)),
+      ...discovery.sources.filter(url=>!previous.seen.includes(url))])];
+  }
   const social = input.wide ? sources.filter(socialPlatform) : [];
   const webSources = sources.filter(url=>!social.includes(url));
   const selectedSocial = social.slice(0,3);
@@ -43,5 +50,6 @@ export async function collectAtivaBatch(job, deps = {}) {
   while (Buffer.byteLength(JSON.stringify(result)) > 850000 && result.records.length) {
     result.records.pop();result.report.recordLimitReached=true;result.report.state='partial';
   }
-  return {job:result,observed:output.pages.filter(page=>page.status === 'collected').map(page=>page.url)};
+  const relevant = new Set((output.documents || []).filter(document=>productRelevant(`${document.title} ${document.body}`,input)).map(document=>document.url));
+  return {job:result,observed:output.pages.filter(page=>page.status === 'collected' && relevant.has(page.url)).map(page=>page.url)};
 }

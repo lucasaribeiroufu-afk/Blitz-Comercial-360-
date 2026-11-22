@@ -1,5 +1,6 @@
 import {setTimeout as sleep} from 'node:timers/promises';
 import {canonicalUrl} from './config.js';
+import {productRelevant} from './relevance.js';
 import {rawRead} from './http.js';
 import infrastructure from './infrastructure.json' with {type:'json'};
 
@@ -41,6 +42,9 @@ export async function discover(input, {read = rawRead, deadline = Infinity,
       for (const item of data.results.slice(0,20)) {
         try {
           const link = canonicalUrl(item.url);
+          if (!productRelevant(`${item.title || ''} ${item.content || ''} ${decodeURIComponent(new URL(link).pathname)}`,input)) {
+            report.discardedIrrelevant = (report.discardedIrrelevant || 0)+1;continue;
+          }
           if (/\.(pdf|zip|jpg|jpeg|png|mp4)$/i.test(new URL(link).pathname)) continue;
           group.push(link);
           if (!candidates.has(link)) candidates.set(link,{url:link,title:String(item.title || '').slice(0,300),
@@ -58,7 +62,7 @@ export async function discover(input, {read = rawRead, deadline = Infinity,
     }
   }
   const ranked = [...new Set(Array.from({length:20},(_,index)=>groups.map(group=>group[index])).flat().filter(Boolean))].slice(0,20);
-  return {sources:ranked,candidates:ranked.map(url=>candidates.get(url)),reports,
+  return {relevanceVersion:1,sources:ranked,candidates:ranked.map(url=>candidates.get(url)),reports,
     coverage:searxUrl ? 'Índice do SearXNG configurado, incluindo consultas por redes e experiências.' :
       'Índice público Mwmbl com cobertura limitada. Acesso anônimo sujeito à quota e disponibilidade do serviço. SearXNG próprio amplia as consultas.'};
 }
