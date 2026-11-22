@@ -4,6 +4,7 @@ import { startSocialRadar, pollSocialRadar, verifyJob } from "./socialRadar.js";
 import { productQuery } from "./purchaseIntent.js";
 import {collectSocialWorker, socialPlatform} from "./socialWorker.js";
 import { collectPncp } from "./pncpRadar.js";
+import {attachAtivaFallback} from './ativa.js';
 import { collectPublicUrl } from "./publicBuyerSources.js";
 import {
   radarKey,
@@ -129,7 +130,7 @@ export async function startBuyerRadar(body, deps = {}) {
     ]),
   ];
   const key = radarKey({
-    version: 3,
+    version: 4,
     publicB2C,
     userId: deps.userId || "",
     query: normalize(query),
@@ -154,7 +155,7 @@ export async function startBuyerRadar(body, deps = {}) {
   }
 }
 async function execute(body, key, deps) {
-  deps = {...deps, deadline: Math.min(deps.deadline || Infinity, Date.now()+45000)};
+  deps = {...deps, ativaRequestKey:key, deadline: Math.min(deps.deadline || Infinity, Date.now()+45000)};
   const sources = [],
     leads = [],
     unknown = [],
@@ -330,7 +331,8 @@ async function execute(body, key, deps) {
   if (pendingSources.length) {
     result.pendingSources = pendingSources;
   }
-  const respond = () => answer(leads, unknown, sources, body.query, body.location, true, {pendingSources});
+  const respond = async () => attachAtivaFallback(
+    answer(leads, unknown, sources, body.query, body.location, true, {pendingSources}), body, deps);
   const limits = deps.freeOnly ? { enabled: false } : deps.limits || paidLimits(),
     token = deps.apifyToken ?? process.env.APIFY_API_TOKEN;
   const gate = sourceReport("Etapa paga", {
@@ -444,6 +446,7 @@ async function execute(body, key, deps) {
       !paid.job,
       { job: paid.job, pendingSources },
     );
+    if (!paid.job) result = await attachAtivaFallback(result, body, deps);
     await store.put(key, {
       response: result,
       freeLeads: leads,
@@ -458,7 +461,7 @@ async function execute(body, key, deps) {
     gate.errors.push(
       err instanceof SearchError ? err.message : "Falha da etapa paga.",
     );
-    result = respond();
+    result = await respond();
     await store.put(key, { response: result, expiresAt: now + ttl() });
     if (!sources.some((s) => s.startUncertain || s.runId))
       await store.finish(key);
@@ -503,7 +506,7 @@ export async function pollBuyerRadar(body, deps = {}) {
     seen.add(key);
     leads.push(lead);
   }
-  const result = answer(
+  let result = answer(
     leads.slice(0, job.count),
     [...old.freeUnknown, ...paid.regionalUnconfirmed],
     reports,
@@ -512,6 +515,7 @@ export async function pollBuyerRadar(body, deps = {}) {
     paid.done,
     { job: body.job, marketplaceSignals: paid.marketplaceSignals, pendingSources:old.response?.pendingSources || [] },
   );
+  if (paid.done) result = await attachAtivaFallback(result, {query:job.query,location:job.location,sourceUrls:[]}, {...deps,ativaRequestKey:job.executionKey});
   await store.put(job.executionKey, {
     response: result,
     expiresAt: Date.now() + ttl(),

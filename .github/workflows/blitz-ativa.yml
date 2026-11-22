@@ -1,0 +1,30 @@
+name: Blitz Ativa checks
+on:
+  pull_request:
+    paths:
+      - 'blitz-ativa/**'
+      - 'src/server/**'
+      - 'src/components/**'
+      - 'src/services/**'
+      - 'src/App.tsx'
+      - 'server.ts'
+      - 'api/ativa.js'
+      - '.dockerignore'
+      - 'package*.json'
+      - '.github/workflows/blitz-ativa.yml'
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run ativa:test
+      - run: npm test
+      - run: npm run lint
+      - run: npm run build

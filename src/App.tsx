@@ -34,6 +34,7 @@ import type { Contact, ExtractionApiConfig, ContactStatus } from './types';
 // Components
 import { Navbar } from './components/Navbar';
 import { ExtractionHero } from './components/ExtractionHero';
+import { AtivaPage } from './components/AtivaPage';
 import { ContactTableView } from './components/ContactTableView';
 import { EditContactModal } from './components/EditContactModal';
 import { ApiConfigModal } from './components/ApiConfigModal';
@@ -49,8 +50,8 @@ export default function App() {
   const [firestoreError, setFirestoreError] = useState<string | null>(null);
 
   // View routing: 'prospecting' (clean prospecting canvas) vs 'database' (full Firestore database page)
-  const [viewMode, setViewMode] = useState<'prospecting' | 'database'>(() => {
-    return window.location.hash === '#banco-firestore' ? 'database' : 'prospecting';
+  const [viewMode, setViewMode] = useState<'prospecting' | 'database' | 'ativa'>(() => {
+    return window.location.hash === '#blitz-ativa' ? 'ativa' : window.location.hash === '#banco-firestore' ? 'database' : 'prospecting';
   });
 
   // Clear screen trigger for extraction hero
@@ -117,7 +118,9 @@ export default function App() {
   // Hash synchronization for smooth navigation and tab opening
   useEffect(() => {
     const handleHashChange = () => {
-      if (window.location.hash === '#banco-firestore') {
+      if (window.location.hash === '#blitz-ativa') {
+        setViewMode('ativa');
+      } else if (window.location.hash === '#banco-firestore') {
         setViewMode('database');
       } else {
         setViewMode('prospecting');
@@ -127,9 +130,11 @@ export default function App() {
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
 
-  const navigateToView = (mode: 'prospecting' | 'database') => {
+  const navigateToView = (mode: 'prospecting' | 'database' | 'ativa') => {
     setViewMode(mode);
-    if (mode === 'database') {
+    if (mode === 'ativa') {
+      window.location.hash = '#blitz-ativa';
+    } else if (mode === 'database') {
       window.location.hash = '#banco-firestore';
     } else {
       window.location.hash = '#prospeccao';
@@ -272,7 +277,7 @@ export default function App() {
         )}
 
         {/* View Routing */}
-        {viewMode === 'database' ? (
+        {viewMode === 'ativa' ? <AtivaPage /> : viewMode === 'database' ? (
           <FirestoreDatabasePage
             contacts={contacts}
             onBackToProspecting={() => navigateToView('prospecting')}

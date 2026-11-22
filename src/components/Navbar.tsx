@@ -16,8 +16,8 @@ interface NavbarProps {
   user: User;
   contactCount: number;
   onOpenSettings: () => void;
-  viewMode?: 'prospecting' | 'database';
-  onNavigateView?: (mode: 'prospecting' | 'database') => void;
+  viewMode?: 'prospecting' | 'database' | 'ativa';
+  onNavigateView?: (mode: 'prospecting' | 'database' | 'ativa') => void;
 }
 
 export function Navbar({ 
@@ -108,6 +108,9 @@ export function Navbar({
               </button>
             </div>
           )}
+
+          <button type="button" onClick={() => onNavigateView?.('ativa')}
+            className={`rounded-lg px-3 py-2 text-xs font-semibold ${viewMode === 'ativa' ? 'bg-teal-500 text-zinc-950' : 'bg-zinc-900 text-teal-300'}`}>Blitz Ativa</button>
 
           {/* API Settings Button */}
           <button

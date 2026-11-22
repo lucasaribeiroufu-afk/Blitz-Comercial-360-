@@ -1,0 +1,10 @@
+{
+  "query": "tinta impermeabilizante",
+  "location": "Uberlândia, MG",
+  "sources": [],
+  "pncp": true,
+  "maxPages": 20,
+  "maxDepth": 2,
+  "maxAgeDays": 30,
+  "pncpPages": 2
+}

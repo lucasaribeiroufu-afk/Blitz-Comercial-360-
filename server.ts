@@ -1,6 +1,7 @@
 import {protectedHandler} from './src/server/serverAuth.js';
 import express from 'express';
 import { mutateCrm } from './src/server/crm.js';
+import { ativaAction } from './src/server/ativa.js';
 import path from 'node:path';
 import { createServer as createViteServer } from 'vite';
 import dotenv from 'dotenv';
@@ -15,6 +16,7 @@ async function startServer() {
   app.use('/api/crm', express.json({limit: '1mb'}));
   app.use(express.json({limit: '32kb'}));
   app.post('/api/crm', protectedHandler(mutateCrm));
+  app.post('/api/ativa', protectedHandler(ativaAction));
   app.get('/api/health', (_req,res) => res.json({status:'ok',mode:'evidence-only'}));
   app.post(['/api/deep-search','/api/ai/deep-search'], protectedHandler(searchBusinesses));
   app.post(['/api/b2c-search','/api/b2c-multifactor-search'], protectedHandler(startBuyerRadar));

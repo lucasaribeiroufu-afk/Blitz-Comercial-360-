@@ -1,5 +1,6 @@
 import {apiHeaders} from './apiAuth';
 import {readApiResponse} from './apiResponse';
+import {ativaApi} from './ativaApi';
 import type { ExtractedResult, ExtractionApiConfig, PlatformType, SearchIntelligenceMeta, MarketplaceSignal, ExecutionReport } from '../types';
 export const DEFAULT_API_CONFIG: ExtractionApiConfig = {apiUrl:'',apiKey:'',authHeaderName:'Authorization',requestMethod:'POST',useCustomApi:false};
 export interface DeepSearchResult {leads: ExtractedResult[]; meta?: SearchIntelligenceMeta; marketplaceSignals?: MarketplaceSignal[]; regionalUnconfirmed?: ExtractedResult[]; pendingSources?: Array<{platform:string;url:string}>;}
@@ -22,12 +23,30 @@ export async function extractFromDirectUrl(rawUrl: string, config?: ExtractionAp
 export async function searchB2CLeads(query: string, location: string, count=30, sourceUrls: string[]=[], onProgress?: (message:string)=>void, includeMarketplaces=false, onExecution?: (report:ExecutionReport,unconfirmed:ExtractedResult[])=>void, publicB2C?: {segment:string}): Promise<DeepSearchResult> {
  let data=await request('/api/b2c-multifactor-search',{query,location,count,sourceUrls,includeMarketplaces,publicB2C});
  onExecution?.(data.meta?.executionReport,data.regionalUnconfirmed||[]);
- if(!data.job)return data;
+ if(!data.job && !data.ativaJob)return data;
  for(let attempt=0;attempt<45&&!data.done;attempt++) {
   onProgress?.(data.meta?.summary || 'Coletando publicações públicas...');
   await new Promise(resolve=>setTimeout(resolve,7000));
   data=await request('/api/social-radar',{action:'poll',job:data.job});onExecution?.(data.meta?.executionReport,data.regionalUnconfirmed||[]);
  }
  if(!data.done)throw new Error('Coleta ainda em processamento no Apify. Nenhum contato foi fabricado; consulte a execução na sua conta.');
+ if(data.ativaJob) {
+  let fallback;
+  for(let attempt=0;attempt<60;attempt++) {
+   onProgress?.('Blitz Ativa assumiu a coleta após esgotamento de créditos ou orçamento. A execução também está no histórico Blitz Ativa.');
+   fallback=await ativaApi({action:'get',id:data.ativaJob.id});
+   if(['finished','failed'].includes(fallback.status))break;
+   await new Promise(resolve=>setTimeout(resolve,4000));
+  }
+  if(fallback?.status!=='finished')throw new Error('Blitz Ativa continua pendente ou encontrou falha. Consulte a execução no histórico Blitz Ativa.');
+  const incoming=fallback.records.filter((record:any)=>record.recordType==='purchase_mention');
+  const previous=new Set(data.leads.map((record:any)=>[record.profileUrl,record.name,record.publishedAt].join('|')));
+  data.leads=[...data.leads,...incoming.filter((record:any)=>!previous.has([record.profileUrl,record.name,record.publishedAt].join('|')))].slice(0,count);
+  data.meta.summary=`Blitz Ativa concluiu a coleta com ${incoming.length} pedidos publicados. Estado ${fallback.report.state}.`;
+  data.meta.executionReport={...data.meta.executionReport,state:fallback.report.state,summary:data.meta.summary,
+   sources:data.meta.executionReport.sources.map((source:any)=>source.source.startsWith('Blitz Ativa')
+    ? {...source,status:fallback.report.state==='complete'?'complete':'limited',received:fallback.records.length,qualified:incoming.length} : source)};
+  onExecution?.(data.meta.executionReport,data.regionalUnconfirmed||[]);
+ }
  return {leads:data.leads,meta:data.meta,marketplaceSignals:data.marketplaceSignals || [],regionalUnconfirmed:data.regionalUnconfirmed||[],pendingSources:data.pendingSources||[]};
 }

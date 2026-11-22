@@ -1,0 +1,23 @@
+services:
+  - type: web
+    name: blitz-ativa
+    runtime: node
+    plan: 0.5c-512mb
+    region: virginia
+    buildCommand: npm ci --omit=dev
+    startCommand: npm run ativa:start
+    healthCheckPath: /health
+    autoDeployTrigger: 'off'
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: BLITZ_ATIVA_HOST
+        value: 0.0.0.0
+      - key: BLITZ_ATIVA_DB
+        value: /var/data/blitz.sqlite
+      - key: BLITZ_ATIVA_TOKEN
+        generateValue: true
+    disk:
+      name: blitz-ativa-data
+      mountPath: /var/data
+      sizeGB: 1
