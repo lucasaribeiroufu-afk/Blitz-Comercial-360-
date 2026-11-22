@@ -219,3 +219,12 @@ test('structured public complaint retains the consumer review and never takes SA
   assert.equal(record.evidence.intent.excerpt,review.reviewBody);
   assert.equal(extract(page({...review,author:undefined}),url,{...options,audience:'b2c'},now).records.length,0);
 });
+
+test('public DNS lookup supports Node autoSelectFamily all-address callback and rejects private targets', async () => {
+  const {publicLookup} = await import('../http.js');
+  const all = await new Promise((resolve,reject)=>publicLookup('8.8.8.8',{all:true},(error,value)=>error?reject(error):resolve(value)));
+  assert.deepEqual(all,[{address:'8.8.8.8',family:4}]);
+  const single = await new Promise((resolve,reject)=>publicLookup('8.8.8.8',{},(error,address,family)=>error?reject(error):resolve({address,family})));
+  assert.deepEqual(single,{address:'8.8.8.8',family:4});
+  await assert.rejects(new Promise((resolve,reject)=>publicLookup('127.0.0.1',{all:true},error=>error?reject(error):resolve())),/privado/);
+});
