@@ -17,7 +17,11 @@ export function protectedHandler(operation, verifyToken) {
  return async(req,res)=>{
   res.setHeader('Cache-Control','no-store');
   if(req.method!=='POST')return res.status(405).json({error:'Método não permitido.'});
-  try {const userId=await requireUser(req,verifyToken);return makeHandler(body=>operation(body,{userId}))(req,res);}
+  try {
+   const userId=await requireUser(req,verifyToken);
+   const authToken=String(req.headers.authorization).replace(/^Bearer /,'');
+   return makeHandler(body=>operation(body,{userId,authToken}))(req,res);
+  }
   catch(err){return res.status(err.status||500).json({error:err.message});}
  };
 }

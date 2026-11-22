@@ -92,3 +92,13 @@ test('unrelated indexed organizations do not become prospects for the requested 
   assert.equal(extract(html(organization)+'<p>Posto de gasolina</p>','https://public.example/',input,now).records.length,0);
   assert.equal(extract(html(organization)+'<p>Tinta impermeabilizante</p>','https://public.example/',input,now).records.length,1);
 });
+
+test('authenticated SearXNG receives the session while the anonymous index never receives it',async()=>{
+  const calls=[];
+  const read=async(url,options)=>{calls.push({url,options});return {status:200,body:'{"results":[]}'};};
+  await discover(input,{maxQueries:1,searxUrl:'https://search.example/',authToken:'fixture',read});
+  assert.equal(calls[0].options.authorization,'Bearer fixture');
+  assert.equal(new URL(calls[0].url).pathname,'/search');
+  await discover(input,{maxQueries:1,searxUrl:'',authToken:'fixture',read});
+  assert.equal(calls[1].options.authorization,undefined);
+});

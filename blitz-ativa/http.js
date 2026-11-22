@@ -5,13 +5,14 @@ import {publicIp} from '../src/server/verifiedSearch.js';
 import {canonicalUrl} from './config.js';
 
 export const userAgent = 'BlitzAtiva/0.1';
-export function rawRead(raw, {timeout = 8000, maxBytes = 1500000} = {}) {
+export function rawRead(raw, {timeout = 8000, maxBytes = 1500000, authorization} = {}) {
   const url = new URL(canonicalUrl(raw));
   const host = url.hostname.replace(/^\[|\]$/g, '');
   if (net.isIP(host) && !publicIp(host)) throw Error('Endereço privado ou reservado bloqueado.');
   return new Promise((resolve, reject) => {
     const request = https.get(url, {
-      headers:{'User-Agent':userAgent, Accept:'text/html,application/xhtml+xml,application/rss+xml,application/atom+xml,application/json,text/plain'},
+      headers:{'User-Agent':userAgent, Accept:'text/html,application/xhtml+xml,application/rss+xml,application/atom+xml,application/json,text/plain',
+        ...(authorization ? {Authorization:authorization} : {})},
       // Pin the verified public address in the connection to prevent DNS rebinding.
       lookup:publicLookup,
     }, response => {
