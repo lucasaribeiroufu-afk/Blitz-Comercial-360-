@@ -7,7 +7,7 @@ import {extract} from './extract.js';
 export async function crawl(options, {read = rawRead, delayMs = 1000, deadline = Infinity, onPage = () => {}} = {}) {
   const hosts = new Set(options.sources.map(url => new URL(url).hostname));
   const robots = new Map(), lastRequest = new Map();
-  const visited = new Set(), queued = new Set(options.sources);
+  const visited = new Set(options.visitedSources || []), queued = new Set(options.sources);
   const queue = options.sources.map(url => ({url, depth:0}));
   const pages = [], documents = [], records = new Map();
   async function pacedRead(url, minimum = delayMs) {
@@ -86,5 +86,5 @@ export async function crawl(options, {read = rawRead, delayMs = 1000, deadline =
     pages.push(report);
     await onPage({pages, records:[...records.values()], limited:queue.length > 0});
   }
-  return {pages, documents, records:[...records.values()], limited:queue.length > 0 || pages.some(page => page.linkLimitReached)};
+  return {pages, documents, pending:queue.map(item=>item.url).slice(0,96), records:[...records.values()], limited:queue.length > 0 || pages.some(page => page.linkLimitReached)};
 }

@@ -125,3 +125,25 @@ Documentação consultada
 
 - https://developer.mwmbl.org/
 - https://docs.searxng.org/dev/search_api.html
+
+## SearXNG próprio
+
+A instância Blitz Search é publicada em https://blitz-searxng.onrender.com. A origem fica em `infrastructure.json` e pode ser substituída por `BLITZ_ATIVA_SEARXNG_URL`. O gateway verifica a sessão Firebase do projeto Blitz usando as chaves públicas do Google. As chaves privadas Firebase permanecem no backend existente. O coletor envia a sessão ao gateway configurado, sem enviá-la às páginas coletadas ou ao índice anônimo. Consultas ficam limitadas por conta e por instância. A interface renova a sessão com o fluxo de login existente.
+
+O container usa a imagem oficial SearXNG e inicializa configuração JSON, quatro mecanismos gerais e autenticação. A instalação gratuita no Render entra em espera quando ociosa. A primeira consulta após essa espera pode inicializar o serviço e exigir uma nova execução. A infraestrutura tem limites de horas compartilhadas, banda, memória e acesso aos mecanismos de pesquisa. Um SearXNG no ar ainda precisa de validação do resultado das consultas.
+
+## Coleta ampla e retomada
+
+`wide: true` habilita lotes persistentes de até 12 páginas dentro da janela de 40 segundos, com teto de 120 páginas, dez lotes e 200 registros por pesquisa. O resultado `waiting` inclui fila pendente e progresso. `POST /v1/jobs/{id}/continue` retoma a mesma pesquisa. Na interface, a fila continua enquanto a página fica aberta. Fechar a página permite retomar pelo histórico. Reservas com identificação própria evitam que uma execução antiga sobrescreva uma retomada. O conteúdo persistido é limitado a 850 KB para caber no documento Firestore.
+
+As fontes sociais descobertas alimentam o worker público já configurado. Instagram, Facebook e TikTok dependem do conteúdo visível permitido a esse conector. Contexto de legenda/post é preservado para comentários quando o vínculo está disponível no DOM. Falhas, acesso exigido e limites aparecem no relatório. O modo amplo consulta também o YouTube se `YOUTUBE_API_KEY` estiver configurada, com até três vídeos e cem comentários recentes por vídeo. Respostas e páginas posteriores continuam fora dessa amostra. A chave precisa de YouTube Data API v3 habilitada e quota disponível. Ausência da chave aparece como configuração pendente.
+
+## Executor em segundo plano
+
+A área Monitoramento salva uma rotina por conta, com produto, região, público e intervalo. As rotinas ficam em `_blitzAtivaSchedules`, com resultados na conta original. `GET /api/ativa` processa um lote de rotina vencida mediante o segredo `BLITZ_ATIVA_CRON_SECRET`, com pelo menos 32 caracteres. O segredo deve ser enviado em Authorization Bearer. POST mantém a autenticação Firebase normal e nunca aceita o segredo de cron como login.
+
+A rotina usa credenciais administrativas existentes para emitir uma sessão curta da própria conta, necessária ao gateway SearXNG. A fila é retomada em novas chamadas do executor. A rotina guarda recibos persistentes em `users/{uid}/ativaSeen` para deduplicar resultados entre execuções, sem depender de uma janela de histórico. Registros permanecem no histórico e dependem de revisão antes de importação ao CRM. O executor não envia contatos nem propostas.
+
+O workflow `.github/workflows/ativa-sweep.yml` está preparado para acionamento manual com o secret de repositório `BLITZ_ATIVA_CRON_SECRET`. A recorrência de GitHub Actions precisa ser definida depois de confirmar a frequência desejada. O intervalo no aplicativo define quando a busca fica vencida, e a frequência do executor determina quando ela será processada. Sem o segredo e o acionamento periódico configurados, salvar uma rotina mantém a configuração pendente.
+
+Para os próximos conectores Meta, são necessários o aplicativo e a modalidade de API autorizada, conta/página empresarial e permissões aprovadas, com autenticação OAuth. Essas permissões determinam quais contas e publicações podem ser lidas. Um token de conta própria não demonstra acesso a comentários de qualquer concorrente ou grupo. O acesso comercial a fontes de terceiros exige verificação específica do conector.

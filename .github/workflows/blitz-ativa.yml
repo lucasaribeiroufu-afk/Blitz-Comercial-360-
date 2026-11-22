@@ -9,6 +9,8 @@ on:
       - 'src/App.tsx'
       - 'server.ts'
       - 'api/ativa.js'
+      - 'worker/**'
+      - 'searxng/**'
       - '.dockerignore'
       - 'package*.json'
       - '.github/workflows/blitz-ativa.yml'
@@ -28,3 +30,16 @@ jobs:
       - run: npm test
       - run: npm run lint
       - run: npm run build
+
+  social-worker:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - run: npm ci --prefix worker
+      - run: node worker/node_modules/playwright-core/cli.js install --with-deps chromium
+      - run: |
+          node --input-type=module -e "import {chromium} from './worker/node_modules/playwright-core/index.mjs'; console.log('CHROMIUM_PATH=' + chromium.executablePath())" >> "$GITHUB_ENV"
+      - run: npm test --prefix worker
