@@ -62,7 +62,7 @@ export function AtivaPage() {
   return <section className="mx-auto max-w-7xl space-y-6 px-4 py-8 text-zinc-100 sm:px-6">
     <div><p className="text-sm font-semibold text-teal-400">Blitz Ativa</p>
       <h1 className="mt-1 text-3xl font-bold tracking-tight">Fontes próprias e pedidos de compra</h1>
-      <p className="mt-2 max-w-3xl text-sm text-zinc-400">Serper e Apify continuam na prospecção principal. Ao esgotar créditos ou orçamento, o coletor próprio assume nas fontes cadastradas e no PNCP. Você também pode iniciar uma coleta aqui.</p></div>
+      <p className="mt-2 max-w-3xl text-sm text-zinc-400">Serper e Apify continuam na prospecção principal. A coleta própria usa fontes cadastradas. O modo integrado guarda histórico no Firestore e consulta até 3 páginas por execução. O serviço dedicado amplia o índice e habilita PNCP. Você também pode iniciar uma coleta aqui.</p></div>
     {error && <div role="alert" className="rounded-lg border border-amber-800 bg-amber-950/30 p-4 text-sm text-amber-200">{error}</div>}
     {notice && <p role="status" className="rounded-lg bg-teal-950 p-3 text-sm text-teal-200">{notice}</p>}
     <div className="grid gap-6 lg:grid-cols-[1fr_20rem]">

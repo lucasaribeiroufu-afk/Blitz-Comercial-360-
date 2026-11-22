@@ -4,7 +4,7 @@ import {canonicalUrl} from './config.js';
 import {rawRead, userAgent} from './http.js';
 import {extract} from './extract.js';
 
-export async function crawl(options, {read = rawRead, delayMs = 1000, onPage = () => {}} = {}) {
+export async function crawl(options, {read = rawRead, delayMs = 1000, deadline = Infinity, onPage = () => {}} = {}) {
   const hosts = new Set(options.sources.map(url => new URL(url).hostname));
   const robots = new Map(), lastRequest = new Map();
   const visited = new Set(), queued = new Set(options.sources);
@@ -12,7 +12,9 @@ export async function crawl(options, {read = rawRead, delayMs = 1000, onPage = (
   const pages = [], documents = [], records = new Map();
   async function pacedRead(url, minimum = delayMs) {
     const host = new URL(url).hostname;
-    await sleep(Math.max(0, (lastRequest.get(host) || 0) + minimum - Date.now()));
+    const wait = Math.max(0, (lastRequest.get(host) || 0) + minimum - Date.now());
+    if (Date.now()+wait+50 >= deadline) throw Error('janela_de_execucao_esgotada');
+    await sleep(wait);
     lastRequest.set(host, Date.now());
     return read(url);
   }

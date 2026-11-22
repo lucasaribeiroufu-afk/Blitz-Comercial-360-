@@ -1,3 +1,4 @@
+import {embeddedRequest} from './ativaEmbedded.js';
 import {SearchError} from './verifiedSearch.js';
 import {mutateCrm} from './crm.js';
 import {createHash} from 'node:crypto';
@@ -10,7 +11,8 @@ export function quotaExhausted(reports = []) {
 export async function ativaRequest(path, userId, payload, deps = {}) {
   const endpoint = deps.ativaUrl ?? process.env.BLITZ_ATIVA_URL;
   const token = deps.ativaToken ?? process.env.BLITZ_ATIVA_TOKEN;
-  if (!endpoint || !token) throw new SearchError('Blitz Ativa ainda não configurado no servidor.', 503);
+  if (!endpoint) return embeddedRequest(path,userId,payload,deps);
+  if (!token) throw new SearchError('Configure o segredo do serviço Blitz Ativa.',503);
   let origin;
   try {origin = new URL(endpoint);} catch {throw new SearchError('BLITZ_ATIVA_URL inválida.', 503);}
   if (origin.protocol !== 'https:' || origin.username || origin.password || origin.pathname !== '/' || origin.search || origin.hash)
@@ -44,7 +46,7 @@ export async function ativaRequest(path, userId, payload, deps = {}) {
 export async function ativaAction(body, deps = {}) {
   if (!deps.userId) throw new SearchError('Login obrigatório.', 401);
   const call = (path, payload) => ativaRequest(path, deps.userId, payload, deps);
-  if (body.action === 'status') return {configured:!!(process.env.BLITZ_ATIVA_URL && process.env.BLITZ_ATIVA_TOKEN)};
+  if (body.action === 'status') return {configured:true, mode:process.env.BLITZ_ATIVA_URL ? 'dedicated' : 'embedded'};
   if (body.action === 'list') return call('/v1/jobs');
   if (body.action === 'sources') return call('/v1/sources');
   if (body.action === 'addSource') return call('/v1/sources', body.source);
@@ -71,7 +73,7 @@ export async function ativaAction(body, deps = {}) {
 
 export async function attachAtivaFallback(result, body, deps = {}) {
   const report = result.meta?.executionReport;
-  if (result.ativaJob || (!quotaExhausted(report?.sources) && !deps.startAtiva && !process.env.BLITZ_ATIVA_URL)) return result;
+  if (result.ativaJob) return result;
   const source = {source:'Blitz Ativa · coleta própria', kind:'content', consulted:false,
     status:'blocked', received:0, qualified:0, errors:[], limits:[], providerCostUsd:0,
     discarded:{produto:0,vendedor:0,intencao_ausente:0,regiao_desconhecida:0,

@@ -107,3 +107,27 @@ test('own collection can run without a paid quota failure or financial budget', 
   });
   assert.equal(output.ativaJob.id,'own-free-run');
 });
+
+test('embedded collector persists jobs by account, retries idempotently and excludes paid providers', async () => {
+  const {embeddedRequest} = await import('../../src/server/ativaEmbedded.js');
+  const data = new Map();
+  const reference = path => ({
+    collection:name=>reference(`${path}/${name}`),doc:name=>reference(`${path}/${name}`),
+    get:async()=>({data:()=>data.get(path)}),set:async value=>{data.set(path,value);},
+  });
+  const db = {collection:name=>reference(name),runTransaction:async callback=>callback({
+    get:ref=>ref.get(),set:(ref,value)=>{ref.set(value);}
+  })};
+  let calls = 0;
+  const deps = {ativaDb:db,ativaCrawl:async input=>{
+    calls++;assert.equal(input.maxPages,3);
+    return {records:[],pages:[{status:'collected',url:input.sources[0]}],limited:false};
+  }};
+  const payload = {query:'tinta',audience:'b2c',sources:['https://public.example/'],requestKey:'same'};
+  const first = await embeddedRequest('/v1/jobs','alice',payload,deps);
+  assert.equal(first.status,'finished');assert.equal(first.report.paidProviderCalls,0);
+  assert.equal((await embeddedRequest('/v1/jobs','alice',payload,deps)).id,first.id);
+  assert.equal(calls,1);
+  await assert.rejects(embeddedRequest(`/v1/jobs/${first.id}`,'bob',undefined,deps),/inexistente/);
+  await embeddedRequest('/v1/jobs','bob',payload,deps);assert.equal(calls,2);
+});
