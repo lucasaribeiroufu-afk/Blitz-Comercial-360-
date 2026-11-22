@@ -23,7 +23,7 @@ export async function collectAtivaBatch(job, deps = {}) {
   const social = input.wide ? sources.filter(socialPlatform) : [];
   const webSources = sources.filter(url=>!social.includes(url));
   const selectedSocial = social.slice(0,3);
-  const youtube = input.wide && !previous.batches ? (deps.ativaYoutube || collectYoutube)({...input,sources},{deadline}) : Promise.resolve({records:[],reports:[]});
+  const youtube = input.wide && (!previous.batches || previous.youtubePending?.length) ? (deps.ativaYoutube || collectYoutube)({...input,sources},{deadline,pending:previous.youtubePending}) : Promise.resolve({records:[],reports:[]});
   const dom = selectedSocial.length ? (deps.ativaSocial || collectSocialWorker)({query:input.query,location:input.location,sourceUrls:selectedSocial},
     {...deps,deadline:Math.min(deadline,Date.now()+19000)}).catch(error=>({records:[],pending:[],reports:[{source:'Worker social',status:'blocked',reason:error.message}]})) : Promise.resolve({records:[],pending:[],reports:[]});
   const web = (deps.ativaCrawl || crawl)({...input,sources:webSources,visitedSources:previous.seen,maxPages:Math.min(12,120-previous.pages),maxDepth:1},{
@@ -32,17 +32,20 @@ export async function collectAtivaBatch(job, deps = {}) {
   const [output, worker, video] = await Promise.all([web,dom,youtube]);
   const newRecords = [...output.records,...socialEvidence(worker.records,input),...video.records];
   const records = [...new Map([...job.records,...newRecords].map(record=>[record.key,record])).values()];
-  const reports = [...(job.report?.reports || discovery.reports),...output.pages,...worker.reports,...video.reports];
+  const reports = [...(job.report?.reports || discovery.reports).filter(page=>!page.youtubePending),...output.pages,...worker.reports,...video.reports];
   const seen = [...new Set([...previous.seen,...output.pages.map(page=>page.url).filter(Boolean),...selectedSocial])];
   const pending = [...new Set([...(output.pending || []),...social.slice(3),...(worker.pending || []).map(source=>source.url)])]
     .filter(url=>!seen.includes(url)).slice(0,96);
-  const progress = {seen,pending,batches:previous.batches+1,pages:previous.pages+output.pages.length+selectedSocial.length};
-  const canContinue = input.wide && pending.length > 0 && progress.pages < 120 && progress.batches < 10;
+  const youtubePending = video.pending || [];
+  const progress = {seen,pending,youtubePending,batches:previous.batches+1,pages:previous.pages+output.pages.length+selectedSocial.length};
+  const canContinue = input.wide && ((pending.length > 0 && progress.pages < 120) || youtubePending.length > 0) && progress.batches < 10;
+  const youtubeReports = youtubePending.map(video=>({source:'YouTube API',url:`https://www.youtube.com/watch?v=${video.id}`,
+    status:'limited',received:video.received,reason:canContinue ? 'Comentários e respostas ainda na fila.' : 'Limite de lotes atingido. Ainda há comentários ou respostas pendentes.'}));
   const collected = reports.some(page=>['collected','complete','limited'].includes(page.status) && page.kind !== 'discovery');
-  const partial = output.limited || pending.length > 0 || reports.some(page=>!['collected','complete'].includes(page.status));
+  const partial = output.limited || pending.length > 0 || youtubePending.length > 0 || reports.some(page=>!['collected','complete'].includes(page.status));
   const result = {...job,records:records.slice(0,input.wide ? 200 : 50),progress,
     status:canContinue ? 'waiting' : 'finished',leaseUntil:0,
-    report:{discovery,reports,paidProviderCalls:0,youtubeApiRequests:(job.report?.youtubeApiRequests || 0)+(video.requests || 0),generatedAt:new Date().toISOString(),
+    report:{discovery,reports:[...reports,...youtubeReports.map(page=>({...page,youtubePending:true}))],paidProviderCalls:0,youtubeApiRequests:(job.report?.youtubeApiRequests || 0)+(video.requests || 0),generatedAt:new Date().toISOString(),
       recordLimitReached:records.length > (input.wide ? 200 : 50),
       state:collected ? partial ? 'partial' : 'complete' : 'unavailable',
       coverage:input.wide ? 'Coleta em lotes retomáveis. Até 120 páginas, 10 lotes e 200 registros por pesquisa. A interface continua a fila enquanto estiver aberta. Execução recorrente em segundo plano requer agendamento configurado.' :
