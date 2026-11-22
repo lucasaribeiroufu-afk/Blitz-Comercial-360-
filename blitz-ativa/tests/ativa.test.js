@@ -157,3 +157,33 @@ test('API requires bearer auth and runs authenticated queued jobs through persis
     assert.equal((await result.json()).status, 'finished');
   } finally {await app.stop(); store.close();}
 });
+
+test('B2C qualifies an identified public request and keeps contact details out of extracted fields', () => {
+  const b2c = {...options, audience:'b2c'};
+  const post = posting({author:{'@type':'Person',name:'Autor de teste'},
+    text:'Preciso comprar tinta impermeabilizante. Entrega em Uberlândia MG. Telefone 34999990000.'});
+  const record = extract(page(post), options.sources[0], b2c, now).records[0];
+  assert.equal(record.entityType, 'pf');
+  assert.equal(record.recordType, 'purchase_mention');
+  assert.equal(record.evidence.intent.excerpt, post.text);
+  assert.equal(record.phone, undefined);
+  assert.equal(extract(page(posting()), options.sources[0], b2c, now).records.length, 0);
+  assert.equal(extract(page(post), options.sources[0], {...options,audience:'both'}, now).records.length, 1);
+  for (const change of [{author:undefined},{datePublished:undefined},
+    {text:'Vendo tinta impermeabilizante em Uberlândia MG.'},
+    {text:'Já comprei tinta impermeabilizante em Uberlândia MG.'}]) {
+    assert.equal(extract(page({...post,...change}), options.sources[0], b2c, now).records.length, 0);
+  }
+  assert.throws(() => config({...options,audience:'everyone'}), /Público/);
+});
+
+test('B2C labels the observed social platform and skips corporate procurement', async () => {
+  const url = 'https://www.facebook.com/groups/public/posts/123/';
+  const post = posting({url,author:{'@type':'Person',name:'Autor de teste'}});
+  assert.equal(extract(page(post),url,{...options,audience:'b2c'},now).records[0].platform,'facebook');
+  const result = await run({...options,sources:[],pncp:true,audience:'b2c'}, {
+    fetcher:() => {throw Error('B2C must not query PNCP');}
+  });
+  assert.equal(result.report.state,'unavailable');
+  assert.equal(result.records.length,0);
+});

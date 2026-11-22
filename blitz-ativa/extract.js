@@ -23,7 +23,8 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
   // Organization identity and its contact belong to the same structured object.
   // Arbitrary mailto links or comment text cannot supply corporate contact fields.
   const structured = parsePage(html).records;
-  for (const organization of structured.filter(isOrganization)) {
+  const audience = options.audience || 'b2b';
+  for (const organization of structured.filter(isOrganization).filter(() => audience !== 'b2c')) {
     if (typeof organization.name !== 'string' || !organization.name.trim() || typeof organization.url !== 'string') continue;
     let website;
     try {website = canonicalUrl(organization.url);} catch {continue;}
@@ -62,7 +63,7 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     ['SocialMediaPosting','DiscussionForumPosting','Comment','Article','BlogPosting'].includes(type)))
     .map(object => ({text:object.text || object.articleBody, author:object.author,
       publishedAt:object.datePublished, url:object.url || object['@id']}));
-  // Feeds without organization-typed authors remain observations, never named B2B buyers.
+  // An identified structured author is required for every qualified request.
   const discarded = {product_or_intent:0, date:0, author:0, region:0, url:0};
   for (const observation of observations) {
     if (typeof observation.text !== 'string') continue;
@@ -73,17 +74,24 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     if (!Number.isFinite(published) || published > now || now - published > options.maxAgeDays * 86400000) {
       discarded.date++; continue;
     }
-    if (!isOrganization(observation.author) || typeof observation.author.name !== 'string' || !observation.author.name.trim()) {discarded.author++; continue;}
+    const corporate = isOrganization(observation.author);
+    const person = types(observation.author).includes('Person');
+    if ((!corporate && !person) || (audience === 'b2b' && !corporate) ||
+        (audience === 'b2c' && !person) || typeof observation.author.name !== 'string' ||
+        !observation.author.name.trim()) {discarded.author++; continue;}
     let publication;
     try {publication = canonicalUrl(observation.url || sourceUrl);} catch {discarded.url++; continue;}
     if (new URL(publication).origin !== new URL(sourceUrl).origin) {discarded.url++; continue;}
     const region = declaredRegion(text, options.location);
     const national = normalize(options.location) === 'brasil';
     if (!national && region.status === 'conflicting') {discarded.region++; continue;}
-    const intentEvidence = {...evidence(text, text), source:'Publicação empresarial estruturada'};
+    const host = new URL(publication).hostname.replace(/^(www|m)\./, '');
+    const platform = ({'facebook.com':'facebook','instagram.com':'instagram','tiktok.com':'tiktok'})[host] || 'website';
+    const intentEvidence = {...evidence(text, text), source:'Publicação pública estruturada'};
     records.push({key:identity(`publication:${publication}:${observation.author.name}:${text}`),
       recordType:national || region.matched ? 'purchase_mention' : 'region_unconfirmed',
-      name:observation.author.name, profileUrl:publication, platform:'website', intent:text,
+      name:observation.author.name, profileUrl:publication, platform, intent:text,
+      entityType:corporate ? 'pj' : 'pf',
       matchedProduct:options.query, publishedAt:new Date(published).toISOString(),
       location:region.authorDeclared || '', verificationStatus:'source_observed',
       classification:'heuristic_purchase_intent', evidence:{intent:intentEvidence}});

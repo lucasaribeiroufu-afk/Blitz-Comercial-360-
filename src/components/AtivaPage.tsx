@@ -3,7 +3,7 @@ import {ativaApi} from '../services/ativaApi';
 
 type Source = {url:string; label:string; keywords:string};
 type RecordRow = {key:string; name:string; recordType:string; intent?:string; profileUrl:string;
-  phone?:string; email?:string; publishedAt?:string; location?:string; proposalDeadline?:string;
+  entityType?:string; platform?:string; phone?:string; email?:string; publishedAt?:string; location?:string; proposalDeadline?:string;
   evidence?:Record<string,{excerpt?:string; sourceUrl?:string}>};
 type Job = {id:string; status:string; input:{query:string; location:string}; records:RecordRow[];
   report?:{state:string; reports:Array<{url?:string; source?:string; status:string; reason?:string}>}; error?:string};
@@ -15,6 +15,7 @@ const label = (type:string) => ({purchase_mention:'Pedido publicado',potential_c
 export function AtivaPage() {
   const [query, setQuery] = useState('tinta impermeabilizante');
   const [location, setLocation] = useState('Uberlândia, MG');
+  const [audience, setAudience] = useState('both');
   const [urls, setUrls] = useState('');
   const [sources, setSources] = useState<Source[]>([]);
   const [source, setSource] = useState<Source>({url:'',label:'',keywords:''});
@@ -42,7 +43,7 @@ export function AtivaPage() {
   async function execute(event:FormEvent) {
     event.preventDefault(); setBusy(true); setError(''); setNotice('');
     try {
-      const job = await ativaApi({action:'start', query, location, pncp:true,
+      const job = await ativaApi({action:'start', query, location, audience, pncp:audience !== 'b2c',
         sources:urls.split('\n').map(url => url.trim()).filter(Boolean), requestKey:crypto.randomUUID()});
       setActive(await ativaApi({action:'get',id:job.id})); await refresh();
     } catch (err:any) {setError(err.message);} finally {setBusy(false);}
@@ -70,6 +71,8 @@ export function AtivaPage() {
             <label className="space-y-1 text-sm">Produto<input className={inputClass} required maxLength={200} value={query} onChange={event=>setQuery(event.target.value)}/></label>
             <label className="space-y-1 text-sm">Região<input className={inputClass} required value={location} onChange={event=>setLocation(event.target.value)} placeholder="Brasil ou Cidade, UF"/></label>
           </div>
+          <label className="block space-y-1 text-sm">Público<select className={inputClass} value={audience} onChange={event=>setAudience(event.target.value)}><option value="both">Empresas e pessoas físicas</option><option value="b2b">Empresas</option><option value="b2c">Pessoas físicas</option></select></label>
+          <p className="text-xs text-zinc-400">Facebook e Instagram pelo Apify estão na busca principal. A coleta própria lê páginas públicas acessíveis com autor, data e pedido estruturados. Cadastre os links das fontes desejadas.</p>
           <label className="block space-y-1 text-sm">URLs públicas adicionais<textarea className={inputClass} rows={3} value={urls} onChange={event=>setUrls(event.target.value)} placeholder="Uma URL HTTPS por linha. Páginas, feeds ou sitemap."/></label>
           <p className="text-xs text-zinc-400">O índice inclui {documents} documentos da sua conta. Correspondências de termos sugerem fontes para uma nova leitura.</p>
           <button className={buttonClass} disabled={busy}>Iniciar coleta própria</button>
@@ -82,7 +85,7 @@ export function AtivaPage() {
           <button type="button" className="mt-3 text-sm text-teal-300 underline" onClick={()=>ativaApi({action:'get',id:active.id}).then(setActive).catch(err=>setError(err.message))}>Atualizar execução</button>
           {active.status === 'finished' && !active.records.length && <p className="mt-4 text-sm text-zinc-400">Esta execução não qualificou registros. Consulte as fontes e limitações abaixo.</p>}
           <div className="mt-4 space-y-3">{active.records.map(row=><article key={row.key} className="rounded-xl border border-zinc-700 p-4">
-            <p className="text-xs font-semibold text-teal-300">{label(row.recordType)}</p><h3 className="mt-1 font-semibold">{row.name}</h3>
+            <p className="text-xs font-semibold text-teal-300">{label(row.recordType)}{row.entityType === 'pf' ? ' · Pessoa física' : ''}{row.platform && ` · ${row.platform}`}</p><h3 className="mt-1 font-semibold">{row.name}</h3>
             <p className="mt-1 text-xs text-zinc-400">{row.location} {row.publishedAt && `· Publicado em ${new Date(row.publishedAt).toLocaleDateString('pt-BR')}`}</p>
             <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{row.intent || row.evidence?.name?.excerpt}</p>
             {(row.phone || row.email) && <p className="mt-2 text-sm">{[row.phone,row.email].filter(Boolean).join(' · ')}</p>}

@@ -49,7 +49,7 @@ export async function ativaAction(body, deps = {}) {
   if (body.action === 'sources') return call('/v1/sources');
   if (body.action === 'addSource') return call('/v1/sources', body.source);
   if (body.action === 'start') return call('/v1/jobs', {
-    query:body.query, location:body.location, sources:body.sources || [], pncp:body.pncp !== false,
+    query:body.query, location:body.location, audience:body.audience, sources:body.sources || [], pncp:body.pncp !== false,
     maxPages:20, maxDepth:2, maxAgeDays:30, pncpPages:2,
     requestKey:body.requestKey,
   });
@@ -79,7 +79,7 @@ export async function attachAtivaFallback(result, body, deps = {}) {
   try {
     if (!deps.userId) throw Error('Sessão necessária para iniciar a alternativa.');
     const job = await (deps.startAtiva || ativaAction)({action:'start', query:body.query,
-      location:body.location, sources:body.sourceUrls || [], pncp:true,
+      location:body.location, audience:body.audience || (body.intent === 'b2c_consumer' ? 'b2c' : body.intent === 'hybrid' ? 'both' : 'b2b'), sources:body.sourceUrls || [], pncp:true,
       requestKey:deps.ativaRequestKey ? `${deps.ativaRequestKey}-${Math.floor(Date.now()/900000)}` : undefined}, deps);
     result.ativaJob = {id:job.id};
     source.consulted = true; source.status = 'running';

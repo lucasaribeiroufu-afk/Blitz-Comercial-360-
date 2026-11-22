@@ -4,7 +4,7 @@ import {procurement} from './pncp.js';
 export async function run(input, deps = {}) {
   const web = input.sources.length ? await crawl(input, deps) : {records:[], pages:[], limited:false};
   let official = {records:[], reports:[]};
-  if (input.pncp) {
+  if (input.pncp && input.audience !== 'b2c') {
     try {official = await procurement(input, deps);} catch (error) {
       official.reports.push({source:'PNCP', status:'failed', reason:error.message});
     }

@@ -1,6 +1,6 @@
 # Blitz Ativa
 
-Serviço próprio de coleta pública B2B, versão 0.2. Serper e Apify permanecem na prospecção principal do Blitz 360. O Blitz Ativa é acionado quando as fontes informam falta de créditos ou quando o orçamento diário configurado se esgota. Também pode ser iniciado manualmente.
+Serviço próprio de coleta pública B2B e B2C, versão 0.2. Serper e Apify permanecem na prospecção principal do Blitz 360. O Blitz Ativa é acionado quando as fontes informam falta de créditos ou quando o orçamento diário configurado se esgota. Também pode ser iniciado manualmente.
 
 O serviço lê fontes HTTPS cadastradas, descobre links do mesmo domínio e consulta propostas abertas do PNCP. Guarda os resultados e o relatório em SQLite e oferece API autenticada para integração. Usa os módulos de normalização, análise de páginas e classificação de intenção já existentes no Blitz 360.
 
@@ -56,7 +56,7 @@ Cada pedido preserva trecho, origem e data de consulta. Páginas HTML incluem ha
 
 O rastreador parte das URLs cadastradas. A construção de um índice geral de descoberta e conectores adicionais permanece pendente. A API do PNCP é consultada em três modalidades, com páginas configuráveis, até três páginas de itens por edital, teto de 40 requisições e janela de 120 segundos. O relatório expõe cortes e falhas. Títulos genéricos também têm seus itens consultados, até os limites informados.
 
-Publicações sem metadados empresariais estruturados ficam fora da qualificação automática nesta versão. Sites que dependem de JavaScript ainda precisam de um conector específico. `robots.txt`, login, CAPTCHA, HTTP 401/403/429 e falhas de acesso são tratados como bloqueios observáveis. Redirecionamentos passam pela verificação de domínio e de robots antes da próxima requisição. Endereços privados e credenciais em URL são bloqueados, e o DNS público é fixado na conexão.
+Publicações precisam de autor estruturado e identificado, como Organization ou Person, data recente, URL e pedido explícito correspondente ao produto. O campo audience aceita b2b, b2c ou both. Requisições antigas sem esse campo preservam b2b. A interface inicia com ambos selecionados. Em b2c, a consulta PNCP e as empresas potenciais ficam desativadas. Pessoas físicas entram apenas por pedido publicado, com entityType pf. O coletor próprio preserva o texto original como evidência e não extrai telefone ou e-mail de pessoas para campos de contato. Sites que dependem de JavaScript ainda precisam de um conector específico. `robots.txt`, login, CAPTCHA, HTTP 401/403/429 e falhas de acesso são tratados como bloqueios observáveis. Redirecionamentos passam pela verificação de domínio e de robots antes da próxima requisição. Endereços privados e credenciais em URL são bloqueados, e o DNS público é fixado na conexão.
 
 O intervalo entre pedidos ao mesmo domínio é de pelo menos um segundo, respeitando `Crawl-delay` até 60 segundos. Fontes que exigem intervalo maior ficam registradas como bloqueadas para esta janela de execução. O limite do documento é 1,5 MB por resposta e o prazo de rede é de oito segundos.
 
@@ -90,3 +90,7 @@ Para executar em máquina própria com volume persistente, use `docker compose -
 - [Crawlee e opções de controle de coleta](https://crawlee.dev/js/api/http-crawler/interface/HttpCrawlerOptions)
 
 O coletor desta versão usa HTTP direto e as bibliotecas já instaladas no projeto. A documentação do Crawlee serviu de referência para avaliar filas, limites e execução de crawlers.
+
+## Canais B2C
+
+A busca principal possui conectores Apify para grupos do Facebook, comentários do Instagram e TikTok, sujeitos a configuração, créditos e acesso. O coletor próprio aceita URLs dessas plataformas e de outros sites quando a página pública acessível oferece publicação estruturada. Reconhece a plataforma pelo domínio. Sites que apresentam somente conteúdo dinâmico ou exigem login precisam do conector correspondente. Uma fonte bloqueada aparece no relatório. A ampliação B2C foi validada com publicações de teste, com coleta social real e implantação ainda pendentes.
