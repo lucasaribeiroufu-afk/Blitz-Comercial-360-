@@ -12,6 +12,7 @@ export function socialEvidence(rows, input, now = Date.now()) {
     const result = extract(`<script type="application/ld+json">${JSON.stringify(object).replace(/</g,'\\u003c')}</script>`,row.sourceUrl,input,now);
     for (const record of result.records) {
       record.authorProfileUrl = row.authorUrl || '';
+      record.parentPublicationUrl = row.contextUrl || row.sourceUrl;
       record.platform = row.platform;
       record.evidence.intent.source = row.collector || 'API oficial de comentários públicos';
       records.set(record.key,record);
