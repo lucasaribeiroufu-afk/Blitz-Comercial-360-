@@ -10,7 +10,7 @@ type Job = {id:string; status:string; input:{query:string; location:string}; pro
 const inputClass = 'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white';
 const buttonClass = 'rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-50';
 const label = (type:string) => ({purchase_mention:'Pedido publicado',potential_company:'Empresa potencial', past_purchase:'Compra passada', positive_experience:'Experiência positiva', negative_experience:'Experiência negativa', price_question:'Pergunta sobre preço',
-  region_unconfirmed:'Região pendente'}[type] || type);
+  repurchase_interest:'Interesse em recomprar', product_reaction:'Reação ao produto', general_reaction:'Reação à publicação', region_unconfirmed:'Região pendente'}[type] || type);
 
 export function AtivaPage() {
   const [query, setQuery] = useState('tinta impermeabilizante');
@@ -78,8 +78,8 @@ export function AtivaPage() {
     catch (err:any) {setError(err.message);} finally {setSaving(null);}
   }
   const youtubeSignals = active?.records.filter(row=>row.platform === 'youtube') || [];
-  const youtubeCandidate = youtubeSignals.find(row=>row.recordType === 'purchase_mention')
-    || youtubeSignals.find(row=>row.recordType === 'price_question');
+  const youtubeCandidate = ['purchase_mention','repurchase_interest','price_question','positive_experience','product_reaction']
+    .map(type=>youtubeSignals.find(row=>row.recordType === type)).find(Boolean);
 
   return <section className="mx-auto max-w-7xl space-y-6 px-4 py-8 text-zinc-100 sm:px-6">
     <div><p className="text-sm font-semibold text-teal-400">Blitz Ativa</p>
