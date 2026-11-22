@@ -46,10 +46,21 @@ test('YouTube is dormant without a key and preserves source comment identity whe
     const resource=url.pathname.split('/').at(-1);
     if(resource==='search')return Response.json({items:[{id:{videoId:'abcdefghijk'}}]});
     if(resource==='videos')return Response.json({items:[{id:'abcdefghijk',snippet:{title:'Tinta impermeabilizante',description:'Demonstração'}}]});
-    return Response.json({items:[{snippet:{topLevelComment:{id:'public-comment',snippet:{textDisplay:'Quero comprar!',authorDisplayName:'Autor',authorChannelUrl:'https://www.youtube.com/channel/example',publishedAt:new Date(Date.now()-1000).toISOString()}}}}]});
+    const snippet={textDisplay:'Quero comprar!',authorDisplayName:'Autor',authorChannelUrl:'https://www.youtube.com/channel/example',publishedAt:new Date(Date.now()-1000).toISOString()};
+    if(resource==='comments') {
+      assert.equal(url.searchParams.get('parentId'),'parent-comment');
+      return Response.json({items:[{id:'public-reply',snippet}]});
+    }
+    if(!url.searchParams.has('pageToken')) {
+      return Response.json({nextPageToken:'next',items:[{snippet:{totalReplyCount:1,topLevelComment:{id:'parent-comment'}}}]});
+    }
+    assert.equal(url.searchParams.get('pageToken'),'next');
+    return Response.json({items:[{snippet:{topLevelComment:{id:'public-comment',snippet}}}]});
   }});
   assert.equal(result.records[0].platform,'youtube');
-  assert.match(result.records[0].profileUrl,/lc=public-comment/);
+  assert.deepEqual(result.records.map(record=>new URL(record.profileUrl).searchParams.get('lc')).sort(),['public-comment','public-reply']);
+  assert.equal(result.reports[0].received,3);
+  assert.deepEqual(result.pending,[]);
   assert.equal(JSON.stringify(result).includes(key),false);
 });
 
