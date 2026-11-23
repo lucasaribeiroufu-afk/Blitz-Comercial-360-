@@ -40,11 +40,11 @@ test('DOM context qualifies only an identified, recent comment without personal 
 test('YouTube is dormant without a key and preserves source comment identity when configured',async()=>{
   assert.equal((await collectYoutube(input,{youtubeKey:'',fetcher:()=>assert.fail('No key')})).reports[0].status,'not_configured');
   const key='fixture-secret';
-  const result=await collectYoutube(input,{youtubeKey:key,fetcher:async(url,options)=>{
+  const result=await collectYoutube({...input,sources:['https://www.youtube.com/watch?v=abcdefghijk']},{youtubeKey:key,fetcher:async(url,options)=>{
     assert.equal(options.headers['X-Goog-Api-Key'],key);
     assert.equal(url.search.includes(key),false);
     const resource=url.pathname.split('/').at(-1);
-    if(resource==='search')return Response.json({items:[{id:{videoId:'abcdefghijk'}}]});
+    if(resource==='search')assert.fail('Explicit video does not require search when discovery is disabled');
     if(resource==='videos')return Response.json({items:[{id:'abcdefghijk',snippet:{title:'Tinta impermeabilizante',description:'Demonstração'}}]});
     const snippet={textDisplay:'Quero comprar!',authorDisplayName:'Autor',authorChannelUrl:'https://www.youtube.com/channel/example',publishedAt:new Date(Date.now()-1000).toISOString()};
     if(resource==='comments') {
@@ -70,6 +70,47 @@ test('YouTube is dormant without a key and preserves source comment identity whe
   assert.equal(result.reports[0].status,'complete');
   assert.deepEqual(result.pending,[]);
   assert.equal(JSON.stringify(result).includes(key),false);
+});
+
+test('broad YouTube discovery combines search pages, recent videos and alternatives without duplicate scans',async()=>{
+  const searched=[];
+  const scanned=[];
+  const explicit='abcdefghijk';
+  const videoId=index=>String(index).padStart(11,'0');
+  const snippet={title:'Tinta impermeabilizante e borracha líquida para telhado'};
+  const fetcher=async resource=>{
+    const url=new URL(resource);
+    const params=url.searchParams;
+    if (url.pathname.endsWith('/videos')) return Response.json({items:[{id:explicit,snippet}]});
+    if (url.pathname.endsWith('/search')) {
+      searched.push(Object.fromEntries(params));
+      const first=(searched.length-1)*4;
+      return Response.json({nextPageToken:'next',items:Array.from({length:5},(_,index)=>({id:{videoId:videoId(first+index)},snippet}))});
+    }
+    scanned.push(params.get('videoId'));
+    return Response.json({items:[]});
+  };
+  const options={...input,discover:true,alternatives:['borracha líquida para telhado'],
+    sources:[`https://www.youtube.com/watch?v=${explicit}`]};
+  const first=await collectYoutube(options,{youtubeKey:'test',fetcher});
+  assert.equal(searched.length,4);
+  assert.deepEqual(searched.slice(0,3).map(search=>[search.q,search.order]),[
+    [input.query,'relevance'],[input.query,'date'],['borracha líquida para telhado','relevance'],
+  ]);
+  assert.equal(searched[3].pageToken,'next');
+  assert.ok(searched.every(search=>search.maxResults==='50'));
+  assert.equal(scanned[0],explicit);
+  assert.match(first.reports[0].reason,/18 vídeos únicos/);
+  assert.ok(first.pending.length > 0);
+  let pending=first.pending;
+  while (pending.length) {
+    const next=await collectYoutube(options,{youtubeKey:'test',fetcher,pending});
+    assert.ok(next.pending.length < pending.length);
+    pending=next.pending;
+  }
+  assert.equal(searched.length,4);
+  assert.equal(scanned.length,18);
+  assert.equal(new Set(scanned).size,18);
 });
 
 test('explicit YouTube sources run without wide web mode and continue beyond the web batch limit',async()=>{

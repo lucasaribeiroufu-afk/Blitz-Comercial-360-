@@ -1,4 +1,8 @@
 import {socialEvidence} from './social.js';
+import {productVariants} from '../src/server/purchaseIntent.js';
+
+const searchPageSize = 50;
+const searchPageBudget = 4;
 
 export function youtubeVideoId(raw) {
   try {
@@ -34,20 +38,51 @@ export async function collectYoutube(input, {youtubeKey = process.env.YOUTUBE_AP
   }
   try {
     if (!pending) {
-      let ids = [...new Set(input.sources.map(youtubeVideoId).filter(Boolean))];
-      if (!ids.length) {
-        const result = await call('search',{part:'snippet',q:input.query,type:'video',maxResults:3,relevanceLanguage:'pt',safeSearch:'moderate',...(input.location?.toLowerCase() === 'brasil' ? {regionCode:'BR'} : {})});
-        ids = (result.items || []).map(item=>item.id?.videoId).filter(id=>/^[\w-]{11}$/.test(id || ''));
+      const explicitIds = [...new Set(input.sources.map(youtubeVideoId).filter(Boolean))];
+      const videos = new Map();
+      if (explicitIds.length) {
+        const result = await call('videos',{part:'snippet',id:explicitIds.join(',')});
+        for (const item of result.items || []) videos.set(item.id,item.snippet);
+        for (const id of explicitIds.filter(id=>!videos.has(id))) {
+          reports.push(youtubeReport({id},'unavailable','Vídeo indisponível pela API.'));
+        }
       }
-      if (!ids.length) return {records:[],reports:[{source:'YouTube API',status:'collected',received:0,requests}]};
-      const videos = await call('videos',{part:'snippet',id:ids.join(',')});
-      const available = new Set((videos.items || []).map(video=>video.id));
-      for (const id of ids.filter(id=>!available.has(id))) {
-        reports.push(youtubeReport({id},'unavailable','Vídeo indisponível pela API.'));
+      const discoverVideos = input.discover !== false && (input.wide || !explicitIds.length);
+      if (discoverVideos) {
+        const alternative = [...(input.alternatives || []),...productVariants(input.query)]
+          .find(term=>term.toLowerCase() !== input.query.toLowerCase());
+        const searches = [
+          {q:input.query,order:'relevance'},
+          {q:input.query,order:'date'},
+          {q:alternative || `${input.query} orçamento`,order:'relevance'},
+        ];
+        let pages = 0;
+        let failure = '';
+        try {
+          for (const search of searches) {
+            if (Date.now()+10000 >= deadline) break;
+            const {nextPageToken,...criteria} = search;
+            const result = await call('search',{
+              part:'snippet',type:'video',maxResults:searchPageSize,regionCode:'BR',relevanceLanguage:'pt',safeSearch:'moderate',
+              ...criteria,...(nextPageToken ? {pageToken:nextPageToken} : {}),
+            });
+            pages++;
+            for (const item of result.items || []) {
+              const id = item.id?.videoId;
+              if (/^[\w-]{11}$/.test(id || '') && !videos.has(id)) videos.set(id,item.snippet);
+            }
+            if (result.nextPageToken && searches.length < searchPageBudget) {
+              searches.push({...criteria,nextPageToken:result.nextPageToken});
+            }
+          }
+        } catch (error) {failure = error.message;}
+        const incomplete = failure || pages < searches.length;
+        reports.push({source:'Descoberta YouTube',status:incomplete ? 'limited' : 'collected',
+          reason:`${videos.size} vídeos únicos na fila · ${pages} páginas consultadas na API.${failure ? ` ${failure}` : incomplete ? ' Busca encerrada pela janela de execução.' : ''}`});
       }
-      queue = (videos.items || []).map(video=>({
-        id:video.id,
-        context:[video.snippet?.title,video.snippet?.description].filter(Boolean).join('\n').slice(0,12000),
+      queue = [...videos].map(([id,snippet])=>({
+        id,
+        context:[snippet?.title,snippet?.description?.slice(0,900)].filter(Boolean).join('\n'),
         pageToken:'', received:0, evaluated:0, qualified:0, replyCount:0, replies:[],
       }));
     }
@@ -91,6 +126,9 @@ export async function collectYoutube(input, {youtubeKey = process.env.YOUTUBE_AP
         if (video.threadsComplete && !video.replies.length) {
           reports.push(youtubeReport(video,'complete'));
           queue.shift();
+        } else if (!video.replies.length) {
+          // Give other videos a turn once replies for this page have been processed.
+          queue.push(queue.shift());
         }
       } catch (error) {
         if ((error.name === 'TimeoutError' || /HTTP 5\d\d/.test(error.message)) && (video.retries || 0) < 2) {
