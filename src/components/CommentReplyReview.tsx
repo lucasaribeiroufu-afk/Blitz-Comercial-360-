@@ -1,7 +1,7 @@
 import {useRef, useState} from 'react';
 import {auth} from '../lib/firebase';
 import {connectYoutubeReply, sendYoutubeReply} from '../services/youtubeReply';
-import {wayborReply, youtubeReplyTarget} from '../utils/wayborReply';
+import {defaultCommercialContact, signedCommercialReply, wayborReply, youtubeReplyTarget} from '../utils/wayborReply';
 
 type ReplyProps = {name:string; product:string; category:string; comment:string; sourceUrl:string};
 type Decision = {kind:'discarded'} | {kind:'sent'; url:string};
@@ -13,6 +13,10 @@ export function CommentReplyReview({name,product,category,comment,sourceUrl}:Rep
   const storageKey = `blitz-reply:${auth.currentUser?.uid || ''}:${identity}`;
   const [decision,setDecision] = useState<Decision|null>(null);
   const [draft,setDraft] = useState('');
+  const [contact,setContact] = useState(defaultCommercialContact);
+  const contactKey = `blitz-reply-contact:${auth.currentUser?.uid || ''}:${product.trim().toLocaleLowerCase('pt-BR')}`;
+  const signedDraft = signedCommercialReply(draft,contact);
+  const signature = signedDraft.slice(draft.trim().length).trim();
   const [notice,setNotice] = useState('');
   const [error,setError] = useState('');
   const [busy,setBusy] = useState(false);
@@ -30,8 +34,21 @@ export function CommentReplyReview({name,product,category,comment,sourceUrl}:Rep
       const prior = JSON.parse(localStorage.getItem(storageKey) || 'null');
       if (prior?.kind === 'discarded' || (prior?.kind === 'sent' && youtubeReplyTarget(prior.url))) setDecision(prior);
     } catch { /* Keep review available if local storage is unavailable. */ }
+    let savedContact = defaultCommercialContact;
+    try {
+      const saved = JSON.parse(localStorage.getItem(contactKey) || 'null');
+      if (typeof saved?.name === 'string' && typeof saved?.whatsapp === 'string' && signedCommercialReply('Olá!',saved)) savedContact = saved;
+    } catch { /* The defaults remain available without local storage. */ }
+    setContact(savedContact);
     setDraft(wayborReply({name,product,category,comment}));
     dialog.current?.showModal();
+  }
+
+  function updateContact(field:'name'|'whatsapp',value:string) {
+    const updated = {...contact,[field]:value};
+    setContact(updated);
+    if (!signedCommercialReply('Olá!',updated)) return;
+    try {localStorage.setItem(contactKey,JSON.stringify(updated));} catch { /* Changes still apply to the current draft. */ }
   }
 
   async function authorize() {
@@ -42,9 +59,9 @@ export function CommentReplyReview({name,product,category,comment,sourceUrl}:Rep
   }
 
   async function send() {
-    if (busy || decision || !connection) return;
+    if (busy || decision || !connection || !signedDraft || signedDraft.length > 10000) return;
     setBusy(true);setError('');
-    try {persist({kind:'sent',url:await sendYoutubeReply(connection,sourceUrl,draft)});}
+    try {persist({kind:'sent',url:await sendYoutubeReply(connection,sourceUrl,signedDraft)});}
     catch (failure) {
       setConnection(null);
       setError(`${failure instanceof Error ? failure.message : 'O YouTube não confirmou o envio.'} Confira o comentário original antes de repetir.`);
@@ -53,7 +70,7 @@ export function CommentReplyReview({name,product,category,comment,sourceUrl}:Rep
 
   async function copy() {
     setError('');
-    try {await navigator.clipboard.writeText(draft.trim());setNotice('Rascunho copiado. Cole e revise a resposta na publicação original antes de enviar.');}
+    try {await navigator.clipboard.writeText(signedDraft);setNotice('Rascunho copiado. Cole e revise a resposta na publicação original antes de enviar.');}
     catch {setError('Selecione e copie manualmente o texto do rascunho.');}
   }
 
@@ -72,14 +89,24 @@ export function CommentReplyReview({name,product,category,comment,sourceUrl}:Rep
           <textarea className="block w-full rounded-lg border border-zinc-700 bg-zinc-950 p-3" rows={8} maxLength={10000}
             value={draft} disabled={busy} onChange={event=>setDraft(event.target.value)}/>
         </label>
+        <div className="mt-3 grid gap-3 sm:grid-cols-2">
+          <label className="space-y-1 text-sm">Nome comercial<input className="block w-full rounded-lg border border-zinc-700 bg-zinc-950 p-2"
+            value={contact.name} maxLength={80} disabled={busy} onChange={event=>updateContact('name',event.target.value)}/></label>
+          <label className="space-y-1 text-sm">WhatsApp comercial<input className="block w-full rounded-lg border border-zinc-700 bg-zinc-950 p-2"
+            type="tel" value={contact.whatsapp} maxLength={25} disabled={busy} onChange={event=>updateContact('whatsapp',event.target.value)}/></label>
+        </div>
+        <p className="mt-2 text-xs text-zinc-400">O nome e o WhatsApp são guardados neste navegador por produto e incluídos no texto ao copiar ou enviar.</p>
+        {signature ? <p className="mt-2 whitespace-pre-wrap rounded-lg bg-zinc-950 p-3 text-sm text-zinc-300">{signature}</p>
+          : draft.trim() && <p className="mt-2 text-sm text-amber-200">Informe um nome comercial e um WhatsApp brasileiro com DDD.</p>}
+        {signedDraft.length > 10000 && <p className="mt-2 text-sm text-amber-200">Encurte a resposta para até 10.000 caracteres, incluindo a assinatura.</p>}
         {youtubeTarget && <p className="mt-2 text-xs text-zinc-400">{connection
           ? `Enviar captura publica uma resposta pública pelo canal ${connection.channelTitle}.`
           : 'Autorize sua conta do YouTube para publicar uma resposta a partir do Blitz.'}</p>}
         <div className="mt-4 flex flex-wrap items-center gap-3 text-sm">
           {youtubeTarget && (connection
-            ? <button type="button" disabled={busy || !draft.trim()} className="rounded-lg bg-teal-500 px-3 py-2 font-semibold text-zinc-950 disabled:opacity-50" onClick={send}>Enviar captura</button>
+            ? <button type="button" disabled={busy || !signedDraft || signedDraft.length > 10000} className="rounded-lg bg-teal-500 px-3 py-2 font-semibold text-zinc-950 disabled:opacity-50" onClick={send}>Enviar captura</button>
             : <button type="button" disabled={busy} className="rounded-lg bg-teal-500 px-3 py-2 font-semibold text-zinc-950 disabled:opacity-50" onClick={authorize}>Conectar YouTube para enviar</button>)}
-          <button type="button" disabled={busy || !draft.trim()} className="text-teal-300 underline" onClick={copy}>Copiar resposta</button>
+          <button type="button" disabled={busy || !signedDraft} className="text-teal-300 underline" onClick={copy}>Copiar resposta</button>
           <a className="text-teal-300 underline" href={sourceUrl} target="_blank" rel="noreferrer">Abrir publicação original</a>
           <button type="button" disabled={busy} className="text-zinc-300 underline" onClick={()=>{setDraft('');persist({kind:'discarded'});}}>Descartar</button>
         </div>

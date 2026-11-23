@@ -5,9 +5,21 @@ type ReplyContext = {
   comment: string;
 };
 
+export const defaultCommercialContact = {name:'Waybor Comercial', whatsapp:'(11) 92505-1092'};
+
+export function signedCommercialReply(body:string, contact:typeof defaultCommercialContact): string {
+  const name = contact.name.trim();
+  const whatsapp = contact.whatsapp.trim();
+  if (!name || !/^(?:55)?[1-9]\d{9,10}$/.test(whatsapp.replace(/\D/g,'')) || !/^[+\d() .-]+$/.test(whatsapp))
+    return '';
+  const message = body.trim();
+  if (!message) return '';
+  return [message, `Se preferir, fale comigo pelo WhatsApp ${whatsapp} para conversarmos em particular.\n${name}`].join('\n\n');
+}
+
 export function wayborReply({name, product, category, comment}: ReplyContext): string {
   const givenName = /^@?([\p{L}]{2,30})(?=[\s._-]|$)/u.exec(name.trim())?.[1];
-  const greeting = givenName ? `Olá, ${givenName}! Aqui é da Waybor.` : 'Olá! Aqui é da Waybor.';
+  const greeting = givenName ? `Olá, ${givenName}!` : 'Olá!';
   const subject = product.trim();
   const normalized = comment.normalize('NFD').replace(/\p{M}/gu,'').toLowerCase();
   const needsMaterialComparison = /\bmao de obra\b/.test(normalized) && /\bmateria(?:l|is)\b/.test(normalized);
@@ -31,7 +43,6 @@ export function wayborReply({name, product, category, comment}: ReplyContext): s
   return [
     greeting,
     `${context} ${details}`,
-    'Se for mais fácil pelo WhatsApp, responda só “WhatsApp” aqui que eu indico o canal comercial da Waybor para conversarmos em particular.',
   ].join('\n\n');
 }
 
