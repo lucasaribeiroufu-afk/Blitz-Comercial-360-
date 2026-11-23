@@ -1,6 +1,6 @@
 import {socialEvidence} from './social.js';
 
-function videoId(raw) {
+export function youtubeVideoId(raw) {
   try {
     const url = new URL(raw);
     if (url.protocol !== 'https:' || url.username || url.password) return '';
@@ -20,27 +20,35 @@ export async function collectYoutube(input, {youtubeKey = process.env.YOUTUBE_AP
     const url = new URL(`https://www.googleapis.com/youtube/v3/${resource}`);
     for (const [key,value] of Object.entries(params)) url.searchParams.set(key,String(value));
     // The key stays in a server-side header, outside evidence URLs and logs.
+    requests++;
     const response = await fetcher(url,{headers:{'X-Goog-Api-Key':youtubeKey},redirect:'error',
       signal:AbortSignal.timeout(Math.max(1,Math.min(6000,deadline-Date.now())))});
-    requests++;
-    if (!response.ok) throw Error(`YouTube API HTTP ${response.status}`);
+    if (!response.ok) {
+      const failure = await response.json().catch(()=>null);
+      const reason = failure?.error?.errors?.[0]?.reason;
+      throw Error(`YouTube API HTTP ${response.status}${/^[a-zA-Z]+$/.test(reason || '') ? ` (${reason})` : ''}`);
+    }
     const body = await response.text();
     if (body.length > 1200000) throw Error('Resposta YouTube excede limite.');
     return JSON.parse(body);
   }
   try {
     if (!pending) {
-      let ids = [...new Set(input.sources.map(videoId).filter(Boolean))].slice(0,3);
+      let ids = [...new Set(input.sources.map(youtubeVideoId).filter(Boolean))];
       if (!ids.length) {
         const result = await call('search',{part:'snippet',q:input.query,type:'video',maxResults:3,relevanceLanguage:'pt',safeSearch:'moderate',...(input.location?.toLowerCase() === 'brasil' ? {regionCode:'BR'} : {})});
         ids = (result.items || []).map(item=>item.id?.videoId).filter(id=>/^[\w-]{11}$/.test(id || ''));
       }
       if (!ids.length) return {records:[],reports:[{source:'YouTube API',status:'collected',received:0,requests}]};
       const videos = await call('videos',{part:'snippet',id:ids.join(',')});
+      const available = new Set((videos.items || []).map(video=>video.id));
+      for (const id of ids.filter(id=>!available.has(id))) {
+        reports.push(youtubeReport({id},'unavailable','Vídeo indisponível pela API.'));
+      }
       queue = (videos.items || []).map(video=>({
         id:video.id,
         context:[video.snippet?.title,video.snippet?.description].filter(Boolean).join('\n').slice(0,12000),
-        pageToken:'', received:0, replies:[],
+        pageToken:'', received:0, evaluated:0, qualified:0, replyCount:0, replies:[],
       }));
     }
     while (queue.length && requests < 12 && Date.now()+6000 < deadline) {
@@ -60,14 +68,19 @@ export async function collectYoutube(input, {youtubeKey = process.env.YOUTUBE_AP
           const snippet = comment?.snippet;
           if (!comment?.id) continue;
           if (!reply && item.snippet.totalReplyCount > 0) video.replies.push({id:comment.id,pageToken:''});
-          if (!snippet?.authorDisplayName || !snippet.authorChannelUrl) continue;
+          if (!snippet?.authorDisplayName || !(snippet.textOriginal || snippet.textDisplay)?.trim()) continue;
           rows.push({text:snippet.textOriginal || snippet.textDisplay,name:snippet.authorDisplayName,
             authorUrl:snippet.authorChannelUrl,sourceUrl:`${sourceUrl}&lc=${encodeURIComponent(comment.id)}`,
             publishedAt:snippet.publishedAt,platform:'youtube',context:video.context,
             contextUrl:sourceUrl,collector:'YouTube Data API v3 — comentário público'});
         }
-        for (const record of socialEvidence(rows,input)) records.set(record.key,record);
+        const qualified = socialEvidence(rows,input);
+        for (const record of qualified) records.set(record.key,record);
         video.received += items.length;
+        video.evaluated = (video.evaluated || 0) + rows.length;
+        video.qualified = (video.qualified || 0) + qualified.length;
+        video.replyCount = (video.replyCount || 0) + (reply ? items.length : 0);
+        video.retries = 0;
         if (reply) {
           if (result.nextPageToken) reply.pageToken = result.nextPageToken;
           else video.replies.shift();
@@ -76,14 +89,24 @@ export async function collectYoutube(input, {youtubeKey = process.env.YOUTUBE_AP
           video.threadsComplete = !result.nextPageToken;
         }
         if (video.threadsComplete && !video.replies.length) {
-          reports.push({source:'YouTube API',url:sourceUrl,status:'collected',received:video.received});
+          reports.push(youtubeReport(video,'complete'));
           queue.shift();
         }
       } catch (error) {
-        reports.push({source:'YouTube API',url:sourceUrl,status:'blocked',received:video.received,reason:error.message});
+        if ((error.name === 'TimeoutError' || /HTTP 5\d\d/.test(error.message)) && (video.retries || 0) < 2) {
+          video.retries = (video.retries || 0) + 1;
+          break;
+        }
+        reports.push(youtubeReport(video,'blocked',error.message));
         queue.shift();
       }
     }
   } catch (error) {reports.push({source:'YouTube API',status:'failed',reason:error.message});}
   return {records:[...records.values()],reports,requests,pending:queue};
+}
+
+export function youtubeReport(video, status, reason) {
+  return {source:'YouTube API',url:`https://www.youtube.com/watch?v=${video.id}`,status,
+    received:video.received || 0,evaluated:video.evaluated || 0,qualified:video.qualified || 0,
+    replyCount:video.replyCount || 0,...(reason ? {reason} : {})};
 }

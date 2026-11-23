@@ -1,5 +1,6 @@
 import {intentAssessment} from '../src/server/purchaseIntent.js';
 import {normalize} from '../src/server/verifiedSearch.js';
+import {productRelevant} from './relevance.js';
 
 const useEvidence = /\b(comprei|adquiri|paguei|uso|utilizo|usei|utilizei|apliquei|testei|ja usei)\b/;
 const negativeExperience = /\b(nao gostei|nao funcionou|nao resolveu|sem solucao|nao apresentou solucao|decepcion\w*|ruim|pessim[oa]|escorrega)\b/;
@@ -32,8 +33,7 @@ export function demandSignal(text, query, alternatives = []) {
 
 export function contextualSignal(text, context, query, alternatives = []) {
   const terms = [query,...alternatives];
-  const words = normalize(context).split(' ');
-  const matches = terms.filter(term=>normalize(term).split(' ').every(word=>words.includes(word)));
+  const matches = terms.filter(term=>productRelevant(context,{query:term}));
   // Several products in the parent make a short reply ambiguous.
   if (matches.length !== 1) return null;
   const n = normalize(text);

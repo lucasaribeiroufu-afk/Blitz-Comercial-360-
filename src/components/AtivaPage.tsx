@@ -6,7 +6,7 @@ type RecordRow = {key:string; name:string; recordType:string; intent?:string; pr
   entityType?:string; platform?:string; phone?:string; email?:string; publishedAt?:string; location?:string; proposalDeadline?:string;
   reviewRequired?:boolean; evidence?:Record<string,{excerpt?:string; sourceUrl?:string}>};
 type Job = {id:string; status:string; input:{query:string; location:string}; progress?:{pages:number;batches:number;pending:string[]}; records:RecordRow[];
-  report?:{state:string; coverage?:string; discovery?:{coverage?:string;candidates:Array<{url:string;title:string;purpose:string}>}; reports:Array<{url?:string; source?:string; status:string; reason?:string; query?:string; received?:number}>}; error?:string};
+  report?:{state:string; coverage?:string; discovery?:{coverage?:string;candidates:Array<{url:string;title:string;purpose:string}>}; reports:Array<{url?:string; source?:string; status:string; reason?:string; query?:string; received?:number; evaluated?:number; qualified?:number; replyCount?:number}>}; error?:string};
 const inputClass = 'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white';
 const buttonClass = 'rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-50';
 const label = (type:string) => ({purchase_mention:'Pedido publicado',potential_company:'Empresa potencial', past_purchase:'Compra passada', positive_experience:'Experiência positiva', negative_experience:'Experiência negativa', price_question:'Pergunta sobre preço',
@@ -104,7 +104,7 @@ export function AtivaPage() {
           <label className="block space-y-1 text-sm">Público<select className={inputClass} value={audience} onChange={event=>setAudience(event.target.value)}><option value="both">Empresas e pessoas físicas</option><option value="b2b">Empresas</option><option value="b2c">Pessoas físicas</option></select></label>
           <p className="text-xs text-zinc-400">O motor procura fontes sobre o produto e candidatos a concorrentes. Comentários com autor e data podem usar o contexto da publicação original. Fontes adicionais são opcionais.</p>
           <label className="flex items-center gap-2 text-sm"><input type="checkbox" checked={wide} onChange={event=>setWide(event.target.checked)}/>Coleta ampla em lotes</label>
-          {wide && <p className="text-xs text-zinc-400">Até 120 páginas e 10 lotes. Mantenha esta página aberta para continuar a fila automaticamente. A coleta pode ser retomada no histórico.</p>}
+          {wide && <p className="text-xs text-zinc-400">Até 120 páginas da web em 10 lotes. A fila de comentários do YouTube continua até esgotar as páginas disponíveis ou a API informar um bloqueio. Mantenha esta página aberta para continuar a fila automaticamente. A coleta pode ser retomada no histórico.</p>}
           {capabilities && <p className="text-xs text-zinc-400">Conexões configuradas · SearXNG {capabilities.searxConfigured ? "sim" : "pendente"} · Worker social {capabilities.socialConfigured ? "sim" : "pendente"} · YouTube API {capabilities.youtubeConfigured ? "sim" : "pendente"}. Acesso e cobertura são verificados a cada coleta.</p>}
           <label className="block space-y-1 text-sm">Produtos alternativos e soluções semelhantes<textarea className={inputClass} rows={3} value={alternatives} onChange={event=>setAlternatives(event.target.value)} placeholder="Um termo por linha. Exemplo para antiderrapante: tapete de borracha"/></label>
           <label className="block space-y-1 text-sm">URLs públicas adicionais (opcional)<textarea className={inputClass} rows={3} value={urls} onChange={event=>setUrls(event.target.value)} placeholder="Uma URL HTTPS por linha. Páginas, feeds ou sitemap."/></label>
@@ -123,6 +123,14 @@ export function AtivaPage() {
           {active.error && <p role="alert" className="mt-3 text-amber-300">{active.error}</p>}
           <button type="button" className="mt-3 text-sm text-teal-300 underline" onClick={()=>ativaApi({action:'get',id:active.id}).then(setActive).catch(err=>setError(err.message))}>Atualizar execução</button>
           {active.status === 'finished' && !active.records.length && <p className="mt-4 text-sm text-zinc-400">Esta execução não qualificou registros. Consulte as fontes e limitações abaixo.</p>}
+          {active.report?.reports.some(item=>item.source === 'YouTube API' && item.url) && <section className="mt-4 rounded-xl border border-zinc-700 p-4">
+            <h3 className="text-sm font-semibold">Comentários do YouTube</h3>
+            <ul className="mt-2 space-y-2 text-xs text-zinc-300">{active.report.reports.filter(item=>item.source === 'YouTube API' && item.url).map(item=><li key={item.url}>
+              <a className="text-teal-300 underline" href={item.url} target="_blank" rel="noreferrer">Ver vídeo</a>
+              {item.evaluated === undefined ? ` · ${item.received ?? 0} retornados` : ` · ${(item.received || 0) - (item.replyCount || 0)} comentários · ${item.replyCount || 0} respostas · ${item.evaluated} avaliados · ${item.qualified || 0} classificados`}
+              {item.status === 'complete' ? ' · Fila concluída' : item.reason ? ` · ${item.reason}` : ''}
+            </li>)}</ul>
+          </section>}
           <div className="mt-4 space-y-3">{active.records.map(row=><article key={row.key} className="rounded-xl border border-zinc-700 p-4">
             {highlightedComments.has(row.key) && <p className="mb-2 text-xs font-semibold text-teal-300">Comentário prioritário desta publicação</p>}
             <p className="text-xs font-semibold text-teal-300">{label(row.recordType)}{row.entityType === 'pf' ? ' · Pessoa física' : ''}{row.platform && ` · ${row.platform}`}</p><h3 className="mt-1 font-semibold">{row.name}</h3>
