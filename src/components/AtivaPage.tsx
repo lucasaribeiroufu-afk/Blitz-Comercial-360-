@@ -1,5 +1,6 @@
 import {useEffect, useState, type FormEvent} from 'react';
 import {ativaApi} from '../services/ativaApi';
+import {CommentReplyReview} from './CommentReplyReview';
 
 type Source = {url:string; label:string; keywords:string};
 type RecordRow = {key:string; name:string; recordType:string; intent?:string; profileUrl:string; authorProfileUrl?:string; parentPublicationUrl?:string;
@@ -137,6 +138,9 @@ export function AtivaPage() {
             <p className="text-xs font-semibold text-teal-300">{label(row.category || row.recordType)}{row.historical && ' · Histórico'}{row.recordType === 'region_unconfirmed' && row.category && ' · Região a confirmar'}{row.entityType === 'pf' ? ' · Pessoa física' : ''}{row.platform && ` · ${row.platform}`}</p><h3 className="mt-1 font-semibold">{row.name}</h3>
             <p className="mt-1 text-xs text-zinc-400">{row.location} {row.publishedAt && `· Publicado em ${new Date(row.publishedAt).toLocaleDateString('pt-BR')}`}</p>
             <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{row.intent || row.evidence?.name?.excerpt}</p>
+            {row.platform && row.platform !== 'website' && row.intent && row.publishedAt && /^https:\/\//.test(row.profileUrl) && <div className="mt-3">
+              <CommentReplyReview name={row.name} product={active.input.query} category={row.category || row.recordType} comment={row.intent} sourceUrl={row.profileUrl}/>
+            </div>}
             {row.reviewRequired && row.evidence?.context?.excerpt && <details className="mt-2 text-xs text-zinc-400"><summary className="cursor-pointer">Ver contexto da publicação</summary><p className="mt-2 whitespace-pre-wrap">{row.evidence.context.excerpt}</p></details>}
             {(row.phone || row.email) && <p className="mt-2 text-sm">{[row.phone,row.email].filter(Boolean).join(' · ')}</p>}
             {row.proposalDeadline && <p className="mt-2 text-xs text-amber-200">Prazo publicado {new Date(row.proposalDeadline).toLocaleString('pt-BR')}</p>}

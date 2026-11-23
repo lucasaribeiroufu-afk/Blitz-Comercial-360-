@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from 'react';
+import {CommentReplyReview} from './CommentReplyReview';
 import { 
   Search, 
   Download, 
@@ -1057,6 +1058,9 @@ export function ContactTableView({
                         ) : (
                           <span className="text-zinc-600 text-[11px]">-</span>
                         )}
+                        {contact.recordType === 'purchase_mention' && contact.intent && contact.authorProfileUrl && contact.publishedAt && /^https:\/\//.test(contact.profileUrl) && <div className="mt-2">
+                          <CommentReplyReview name={contact.name} product={contact.matchedProduct || 'a solução pesquisada'} category={contact.recordType} comment={contact.intent} sourceUrl={contact.profileUrl}/>
+                        </div>}
                       </td>
 
                       {/* Localização Maps */}

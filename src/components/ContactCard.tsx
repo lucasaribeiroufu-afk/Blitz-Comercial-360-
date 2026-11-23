@@ -40,6 +40,7 @@ import { parseProductInsight, hasShippingIncluded } from '../utils/productHelper
 import { getOptimalContactTiming } from '../utils/salesScripts';
 import { resolveWhatsAppNumber } from '../utils/phoneHelper';
 import { WhatsAppPitchModal } from './WhatsAppPitchModal';
+import {CommentReplyReview} from './CommentReplyReview';
 import { InstagramLogo } from './InstagramLogo';
 import { resolveInstagram } from '../utils/instagramHelper';
 
@@ -152,6 +153,9 @@ export function ContactCard({
       
       <div>
         <SourceEvidence record={contact} />
+        {contact.recordType === 'purchase_mention' && contact.intent && contact.authorProfileUrl && contact.publishedAt && /^https:\/\//.test(contact.profileUrl) && <div className="mt-2">
+          <CommentReplyReview name={contact.name} product={contact.matchedProduct || 'a solução pesquisada'} category={contact.recordType} comment={contact.intent} sourceUrl={contact.profileUrl}/>
+        </div>}
         {contact.recordType === 'potential_company' && <p className="mt-2 text-xs text-amber-300">Empresa potencial — demanda pelo produto não comprovada.</p>}
       {/* Top Header */}
         <div className="flex items-start justify-between gap-3">
