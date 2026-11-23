@@ -2,7 +2,7 @@ import {productRelevant} from '../../blitz-ativa/relevance.js';
 import {crawl} from '../../blitz-ativa/crawler.js';
 import {discover} from '../../blitz-ativa/discovery.js';
 import {rawRead} from '../../blitz-ativa/http.js';
-import {collectYoutube} from '../../blitz-ativa/youtube.js';
+import {collectYoutube, youtubeReport, youtubeVideoId} from '../../blitz-ativa/youtube.js';
 import {socialEvidence} from '../../blitz-ativa/social.js';
 import {collectSocialWorker, socialPlatform} from './socialWorker.js';
 
@@ -20,27 +20,31 @@ export async function collectAtivaBatch(job, deps = {}) {
     sources = [...new Set([...sources.filter(url=>origins.has(new URL(url).origin)),
       ...discovery.sources.filter(url=>!previous.seen.includes(url))])];
   }
-  const social = input.wide ? sources.filter(socialPlatform) : [];
-  const webSources = sources.filter(url=>!social.includes(url));
+  const webBudget = previous.pages < 120 && previous.batches < 10;
+  const social = input.wide && webBudget ? sources.filter(socialPlatform) : [];
+  const youtubeEnabled = input.wide || input.sources.some(youtubeVideoId);
+  const webSources = sources.filter(url=>!social.includes(url) && !(youtubeEnabled && youtubeVideoId(url)));
   const selectedSocial = social.slice(0,3);
-  const youtube = input.wide && (!previous.batches || previous.youtubePending?.length) ? (deps.ativaYoutube || collectYoutube)({...input,sources},{deadline,pending:previous.youtubePending}) : Promise.resolve({records:[],reports:[]});
+  const youtube = youtubeEnabled && (!previous.batches || previous.youtubePending?.length) ? (deps.ativaYoutube || collectYoutube)({...input,sources},{deadline,pending:previous.youtubePending}) : Promise.resolve({records:[],reports:[]});
   const dom = selectedSocial.length ? (deps.ativaSocial || collectSocialWorker)({query:input.query,location:input.location,sourceUrls:selectedSocial},
     {...deps,deadline:Math.min(deadline,Date.now()+19000)}).catch(error=>({records:[],pending:[],reports:[{source:'Worker social',status:'blocked',reason:error.message}]})) : Promise.resolve({records:[],pending:[],reports:[]});
-  const web = (deps.ativaCrawl || crawl)({...input,sources:webSources,visitedSources:previous.seen,maxPages:Math.min(12,120-previous.pages),maxDepth:1},{
+  const web = webBudget ? (deps.ativaCrawl || crawl)({...input,sources:webSources,visitedSources:previous.seen,maxPages:Math.min(12,120-previous.pages),maxDepth:1},{
     deadline,read:url=>(deps.ativaRead || rawRead)(url,{timeout:Math.max(1,Math.min(6000,deadline-Date.now()))}),
-  });
+  }) : Promise.resolve({records:[],pages:[],pending:sources,limited:sources.length > 0});
   const [output, worker, video] = await Promise.all([web,dom,youtube]);
   const newRecords = [...output.records,...socialEvidence(worker.records,input),...video.records];
   const records = [...new Map([...job.records,...newRecords].map(record=>[record.key,record])).values()];
+  const youtubePriority = record=>record.platform === 'youtube' ?
+    ({purchase_mention:4,repurchase_interest:3,price_question:2,positive_experience:1}[record.recordType] || 0) : 0;
+  records.sort((a,b)=>youtubePriority(b)-youtubePriority(a));
   const reports = [...(job.report?.reports || discovery.reports).filter(page=>!page.youtubePending),...output.pages,...worker.reports,...video.reports];
   const seen = [...new Set([...previous.seen,...output.pages.map(page=>page.url).filter(Boolean),...selectedSocial])];
   const pending = [...new Set([...(output.pending || []),...social.slice(3),...(worker.pending || []).map(source=>source.url)])]
     .filter(url=>!seen.includes(url)).slice(0,96);
   const youtubePending = video.pending || [];
   const progress = {seen,pending,youtubePending,batches:previous.batches+1,pages:previous.pages+output.pages.length+selectedSocial.length};
-  const canContinue = input.wide && ((pending.length > 0 && progress.pages < 120) || youtubePending.length > 0) && progress.batches < 10;
-  const youtubeReports = youtubePending.map(video=>({source:'YouTube API',url:`https://www.youtube.com/watch?v=${video.id}`,
-    status:'limited',received:video.received,reason:canContinue ? 'Comentários e respostas ainda na fila.' : 'Limite de lotes atingido. Ainda há comentários ou respostas pendentes.'}));
+  const canContinue = youtubePending.length > 0 || (input.wide && pending.length > 0 && progress.pages < 120 && progress.batches < 10);
+  const youtubeReports = youtubePending.map(video=>youtubeReport(video,'in_progress','Comentários e respostas ainda na fila.'));
   const collected = reports.some(page=>['collected','complete','limited'].includes(page.status) && page.kind !== 'discovery');
   const partial = output.limited || pending.length > 0 || youtubePending.length > 0 || reports.some(page=>!['collected','complete'].includes(page.status));
   const result = {...job,records:records.slice(0,input.wide ? 200 : 50),progress,

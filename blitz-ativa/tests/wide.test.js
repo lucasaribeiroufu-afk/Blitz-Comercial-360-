@@ -49,7 +49,11 @@ test('YouTube is dormant without a key and preserves source comment identity whe
     const snippet={textDisplay:'Quero comprar!',authorDisplayName:'Autor',authorChannelUrl:'https://www.youtube.com/channel/example',publishedAt:new Date(Date.now()-1000).toISOString()};
     if(resource==='comments') {
       assert.equal(url.searchParams.get('parentId'),'parent-comment');
-      return Response.json({items:[{id:'public-reply',snippet}]});
+      if (!url.searchParams.has('pageToken')) {
+        return Response.json({nextPageToken:'next-replies',items:[{id:'public-reply',snippet}]});
+      }
+      assert.equal(url.searchParams.get('pageToken'),'next-replies');
+      return Response.json({items:[{id:'public-reply-2',snippet:{...snippet,textDisplay:'Bacana!'}}]});
     }
     if(!url.searchParams.has('pageToken')) {
       return Response.json({nextPageToken:'next',items:[{snippet:{totalReplyCount:1,topLevelComment:{id:'parent-comment'}}}]});
@@ -58,10 +62,53 @@ test('YouTube is dormant without a key and preserves source comment identity whe
     return Response.json({items:[{snippet:{topLevelComment:{id:'public-comment',snippet}}}]});
   }});
   assert.equal(result.records[0].platform,'youtube');
-  assert.deepEqual(result.records.map(record=>new URL(record.profileUrl).searchParams.get('lc')).sort(),['public-comment','public-reply']);
-  assert.equal(result.reports[0].received,3);
+  assert.deepEqual(result.records.map(record=>new URL(record.profileUrl).searchParams.get('lc')).sort(),['public-comment','public-reply','public-reply-2']);
+  assert.equal(result.reports[0].received,4);
+  assert.equal(result.reports[0].evaluated,3);
+  assert.equal(result.reports[0].qualified,3);
+  assert.equal(result.reports[0].replyCount,2);
+  assert.equal(result.reports[0].status,'complete');
   assert.deepEqual(result.pending,[]);
   assert.equal(JSON.stringify(result).includes(key),false);
+});
+
+test('explicit YouTube sources run without wide web mode and continue beyond the web batch limit',async()=>{
+  const url='https://www.youtube.com/watch?v=abcdefghijk';
+  const sourceInput={...input,wide:false,sources:[url]};
+  const nextPage={id:'abcdefghijk',received:120,evaluated:120,qualified:2,replyCount:20};
+  const deps={
+    ativaYoutube:async options=>{
+      assert.deepEqual(options.sources,[url]);
+      return {records:[],reports:[],pending:[nextPage]};
+    },
+    ativaCrawl:async options=>{
+      assert.deepEqual(options.sources,[]);
+      return {records:[],pages:[],pending:[]};
+    },
+  };
+  const first=await collectAtivaBatch({input:sourceInput,records:[]},deps);
+  assert.equal(first.job.status,'waiting');
+  first.job.progress.batches=10;
+  const resumed=await collectAtivaBatch(first.job,{
+    ativaCrawl:()=>assert.fail('The web batch budget is exhausted'),
+    ativaYoutube:async (_options,{pending})=>{
+      assert.deepEqual(pending,[nextPage]);
+      return {records:[],reports:[{source:'YouTube API',url,status:'complete',received:121,evaluated:121}]};
+    },
+  });
+  assert.equal(resumed.job.status,'finished');
+  assert.deepEqual(resumed.job.report.reports.map(report=>report.status),['complete']);
+});
+
+test('short comments distinguish contextual interest, experience and general reactions',()=>{
+  const scoped={...input,query:'tinta impermeabilizante para telhado'};
+  const subject={name:'Autor',sourceUrl:'https://www.youtube.com/watch?v=abcdefghijk&lc=x',
+    contextUrl:'https://www.youtube.com/watch?v=abcdefghijk',context:'Tinta impermeabilizante para telhados',
+    publishedAt:'2026-11-21',platform:'youtube'};
+  const rows=['Quanto custa?', 'Usei e gostei', 'Bacana', 'Quero comprar de novo']
+    .map((text,index)=>({...subject,text,sourceUrl:subject.sourceUrl+index}));
+  assert.deepEqual(socialEvidence(rows,scoped,now).map(record=>record.recordType),
+    ['price_question','positive_experience','general_reaction','repurchase_interest']);
 });
 
 test('persistent continuation keeps the same job, isolates accounts and fences stale completions',async()=>{
