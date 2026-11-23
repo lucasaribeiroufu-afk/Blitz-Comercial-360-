@@ -4,12 +4,12 @@ import {ativaApi} from '../services/ativaApi';
 type Source = {url:string; label:string; keywords:string};
 type RecordRow = {key:string; name:string; recordType:string; intent?:string; profileUrl:string; authorProfileUrl?:string; parentPublicationUrl?:string;
   entityType?:string; platform?:string; phone?:string; email?:string; publishedAt?:string; location?:string; proposalDeadline?:string;
-  reviewRequired?:boolean; evidence?:Record<string,{excerpt?:string; sourceUrl?:string}>};
+  category?:string; historical?:boolean; reviewRequired?:boolean; evidence?:Record<string,{excerpt?:string; sourceUrl?:string}>};
 type Job = {id:string; status:string; input:{query:string; location:string}; progress?:{pages:number;batches:number;pending:string[]}; records:RecordRow[];
   report?:{state:string; coverage?:string; discovery?:{coverage?:string;candidates:Array<{url:string;title:string;purpose:string}>}; reports:Array<{url?:string; source?:string; status:string; reason?:string; query?:string; received?:number; evaluated?:number; qualified?:number; replyCount?:number}>}; error?:string};
 const inputClass = 'w-full rounded-lg border border-zinc-700 bg-zinc-950 px-3 py-2.5 text-sm text-white';
 const buttonClass = 'rounded-lg bg-teal-500 px-4 py-2.5 text-sm font-semibold text-zinc-950 disabled:opacity-50';
-const label = (type:string) => ({purchase_mention:'Pedido publicado',potential_company:'Empresa potencial', past_purchase:'Compra passada', positive_experience:'Experiência positiva', negative_experience:'Experiência negativa', price_question:'Pergunta sobre preço',
+const label = (type:string) => ({purchase_mention:'Pedido publicado',potential_company:'Empresa potencial', past_purchase:'Compra passada', positive_experience:'Experiência positiva', negative_experience:'Experiência negativa', price_question:'Pergunta de preço ou orçamento', service_question:'Pergunta sobre contratação de serviço',
   repurchase_interest:'Interesse em recomprar', product_reaction:'Reação ao produto', general_reaction:'Reação à publicação', region_unconfirmed:'Região pendente'}[type] || type);
 
 export function AtivaPage() {
@@ -77,11 +77,11 @@ export function AtivaPage() {
     try {await ativaApi({action:'saveToCrm',id:active!.id,keys:[row.key]}); setNotice(`${row.name} salvo no CRM com evidências.`);}
     catch (err:any) {setError(err.message);} finally {setSaving(null);}
   }
-  const signalPriority = ['purchase_mention','repurchase_interest','price_question','positive_experience','product_reaction'];
+  const signalPriority = ['purchase_mention','price_question','service_question','repurchase_interest','positive_experience','product_reaction'];
   const bestByPublication = new Map<string, RecordRow>();
   for (const type of signalPriority) {
     for (const row of active?.records || []) {
-      if (row.recordType !== type || !row.platform || row.platform === 'website') continue;
+      if ((row.category || row.recordType) !== type || row.historical || !row.platform || row.platform === 'website') continue;
       const publication = row.parentPublicationUrl || row.profileUrl;
       if (!bestByPublication.has(publication)) bestByPublication.set(publication, row);
     }
@@ -133,7 +133,7 @@ export function AtivaPage() {
           </section>}
           <div className="mt-4 space-y-3">{active.records.map(row=><article key={row.key} className="rounded-xl border border-zinc-700 p-4">
             {highlightedComments.has(row.key) && <p className="mb-2 text-xs font-semibold text-teal-300">Comentário prioritário desta publicação</p>}
-            <p className="text-xs font-semibold text-teal-300">{label(row.recordType)}{row.entityType === 'pf' ? ' · Pessoa física' : ''}{row.platform && ` · ${row.platform}`}</p><h3 className="mt-1 font-semibold">{row.name}</h3>
+            <p className="text-xs font-semibold text-teal-300">{label(row.category || row.recordType)}{row.historical && ' · Histórico'}{row.recordType === 'region_unconfirmed' && row.category && ' · Região a confirmar'}{row.entityType === 'pf' ? ' · Pessoa física' : ''}{row.platform && ` · ${row.platform}`}</p><h3 className="mt-1 font-semibold">{row.name}</h3>
             <p className="mt-1 text-xs text-zinc-400">{row.location} {row.publishedAt && `· Publicado em ${new Date(row.publishedAt).toLocaleDateString('pt-BR')}`}</p>
             <p className="mt-3 whitespace-pre-wrap text-sm text-zinc-300">{row.intent || row.evidence?.name?.excerpt}</p>
             {row.reviewRequired && <div className="mt-2 rounded-lg border border-amber-800 p-3 text-xs text-amber-200"><p>Interpretação contextual. Revise a publicação e o comentário antes de abordar.</p><p className="mt-2 whitespace-pre-wrap">{row.evidence?.context?.excerpt}</p></div>}

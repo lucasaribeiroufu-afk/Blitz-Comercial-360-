@@ -111,6 +111,35 @@ test('short comments distinguish contextual interest, experience and general rea
     ['price_question','positive_experience','general_reaction','repurchase_interest']);
 });
 
+test('captures a service quote and an older contractor inquiry with the original author and link',()=>{
+  const scoped={...input,location:'Uberlândia, MG',query:'tinta impermeabilizante para telhado'};
+  const video='https://www.youtube.com/watch?v=abcdefghijk';
+  const subject={contextUrl:video,context:'Como fazer impermeabilização de telhado com borracha líquida em 3 etapas',
+    platform:'youtube'};
+  const examples=[
+    {name:'@autor-orcamento',publishedAt:'2026-11-21T10:00:00Z',
+      text:'Boa tarde, nos dias de hoje quanto ficaria esse serviço com material e mão de obra e também só a mão de obra, gostei bastante da demonstração.'},
+    {name:'@autor-servico',publishedAt:'2022-10-01T10:00:00Z',
+      text:'Vocês executam o trabalho ou apenas vendem o produto?'},
+    {name:'@autor-sem-intencao',publishedAt:'2026-11-21T10:00:00Z',
+      text:'Quanto tempo leva para secar o material?'},
+  ].map((sample,index)=>({...subject,...sample,sourceUrl:video+'&lc=example'+index}));
+  const records=socialEvidence(examples,scoped,now);
+  assert.equal(records.length,2);
+  assert.deepEqual(records.map(record=>record.category),['price_question','service_question']);
+  assert.deepEqual(records.map(record=>record.recordType),['region_unconfirmed','region_unconfirmed']);
+  for (const [index,record] of records.entries()) {
+    assert.equal(record.name,examples[index].name);
+    assert.equal(record.intent,examples[index].text);
+    assert.equal(record.profileUrl,examples[index].sourceUrl);
+    assert.equal(record.matchedProduct,'borracha líquida');
+  }
+  assert.equal(records[0].historical,undefined);
+  assert.equal(records[1].historical,true);
+  assert.equal(socialEvidence([{...examples[0],context:'Como pintar uma escada de madeira'}],scoped,now).length,0);
+  assert.equal(socialEvidence([{...examples[1],publishedAt:'2019-01-01'}],scoped,now).length,0);
+});
+
 test('persistent continuation keeps the same job, isolates accounts and fences stale completions',async()=>{
   const data=new Map();
   const reference=path=>({collection:name=>reference(`${path}/${name}`),doc:name=>reference(`${path}/${name}`),

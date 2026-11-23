@@ -77,7 +77,10 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     const assessment = demandSignal(text, options.query, options.alternatives) || contextualSignal(text,context,options.query,options.alternatives);
     if (!assessment) {discarded.product_or_intent++; continue;}
     const published = Date.parse(observation.publishedAt);
-    if (!Number.isFinite(published) || published > now || now - published > options.maxAgeDays * 86400000) {
+    const ageDays = (now - published) / 86400000;
+    const historical = ageDays > options.maxAgeDays;
+    const historicalQuestion = context && ['price_question','service_question'].includes(assessment.type) && ageDays <= 5 * 366;
+    if (!Number.isFinite(published) || ageDays < 0 || (historical && !historicalQuestion)) {
       discarded.date++; continue;
     }
     const corporate = isOrganization(observation.author);
@@ -97,7 +100,7 @@ export function extract(html, sourceUrl, options, now = Date.now()) {
     records.push({key:identity(`publication:${publication}:${observation.author.name}:${text}`),
       recordType:national || region.matched ? assessment.type : 'region_unconfirmed',
       geographicStatus:national || region.matched ? 'matched' : 'unconfirmed',
-      category:assessment.type,
+      category:assessment.type, ...(historical ? {historical:true} : {}),
       prospectingBasis:assessment.relation === 'alternative' ? 'Sinal sobre alternativa informada. Compatibilidade comercial depende de revisão.' : 'Publicação sobre o produto pesquisado.',
       name:observation.author.name, profileUrl:publication, platform, intent:text,
       entityType:corporate ? 'pj' : 'pf',

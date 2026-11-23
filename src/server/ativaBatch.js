@@ -34,9 +34,13 @@ export async function collectAtivaBatch(job, deps = {}) {
   const [output, worker, video] = await Promise.all([web,dom,youtube]);
   const newRecords = [...output.records,...socialEvidence(worker.records,input),...video.records];
   const records = [...new Map([...job.records,...newRecords].map(record=>[record.key,record])).values()];
-  const youtubePriority = record=>record.platform === 'youtube' ?
-    ({purchase_mention:4,repurchase_interest:3,price_question:2,positive_experience:1}[record.recordType] || 0) : 0;
-  records.sort((a,b)=>youtubePriority(b)-youtubePriority(a));
+  const signalPriority = record=>{
+    if (record.platform === 'website' || !record.platform) return 0;
+    const type = record.category || record.recordType;
+    return ({purchase_mention:5,price_question:4,service_question:4,repurchase_interest:3,positive_experience:1}[type] || 0) +
+      (record.historical ? -5 : 0);
+  };
+  records.sort((a,b)=>signalPriority(b)-signalPriority(a) || (a.historical && b.historical ? b.publishedAt.localeCompare(a.publishedAt) : 0));
   const reports = [...(job.report?.reports || discovery.reports).filter(page=>!page.youtubePending),...output.pages,...worker.reports,...video.reports];
   const seen = [...new Set([...previous.seen,...output.pages.map(page=>page.url).filter(Boolean),...selectedSocial])];
   const pending = [...new Set([...(output.pending || []),...social.slice(3),...(worker.pending || []).map(source=>source.url)])]
